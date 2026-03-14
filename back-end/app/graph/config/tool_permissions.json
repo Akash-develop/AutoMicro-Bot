@@ -1,0 +1,19 @@
+{
+    "execute_terminal_command": true,
+    "open_url": true,
+    "search_web": true,
+    "sleep_system": true,
+    "create_folder": true,
+    "create_file": true,
+    "create_excel_with_sample_data": true,
+    "mouse_click": true,
+    "scroll_system": true,
+    "type_text": true,
+    "press_key": true,
+    "dont_do_user_saw_crash_my_os": true,
+    "dont_do_user_saw_open_chrome": false,
+    "don\u2019t_do_user_saw_turn_off_wi-fi": true,
+    "_locked_tools": [
+        "dont_do_user_saw_crash_my_os"
+    ]
+}
