@@ -10,12 +10,12 @@ import HistoryDrawer from './components/HistoryDrawer.jsx';
 import SettingsDrawer from './components/SettingsDrawer.jsx';
 import BubbleView from './components/BubbleView.jsx';
 import LoadingScreen from './components/LoadingScreen.jsx';
-import { streamMessage, clearHistory, getHistory } from './api/chat.js';
+import { streamMessage, clearHistory, getHistory, openTerminal } from './api/chat.js';
 import { getCurrentWindow, LogicalSize, LogicalPosition } from '@tauri-apps/api/window';
 
 // Generate a random session ID
 function generateSessionId() {
-  return `session_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  return `session_${crypto.randomUUID()}`;
 }
 
 // Get or create initial session ID
@@ -159,7 +159,7 @@ export default function App() {
             const targetY = pos.y < lHeight / 2 ? padding : lHeight - bubbleSize - padding - 60; // 60 for taskbar/dock space
 
             await appWindow.setPosition(new LogicalPosition(targetX, targetY));
-          }, 500); // 500ms after move stops
+          }, 200); // Reduced to 200ms for snappier feedback
         });
       }
     };
@@ -175,7 +175,7 @@ export default function App() {
   // Add a message to the list
   const addMessage = (role, content) => {
     const msg = {
-      id: `msg_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      id: `msg_${crypto.randomUUID()}`,
       role,
       content,
       timestamp: new Date().toISOString(),
@@ -189,7 +189,7 @@ export default function App() {
     addMessage('user', text);
     setIsTyping(true);
 
-    const msgId = `msg_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    const msgId = `msg_${crypto.randomUUID()}`;
     setMessages((prev) => [...prev, {
       id: msgId,
       role: 'assistant',
@@ -271,6 +271,15 @@ export default function App() {
     }
   }, [newMsgId]);
 
+  const handleOpenTerminal = useCallback(async () => {
+    try {
+      await openTerminal();
+    } catch (err) {
+      console.error("Failed to open terminal:", err);
+      // Optional: show a toast/notification
+    }
+  }, []);
+
   const handleClearChat = useCallback(async () => {
     setMessages([]);
     setNewMsgId(null);
@@ -323,6 +332,7 @@ export default function App() {
             onOpenSettings={() => setIsSettingsOpen(true)}
             onNormalMode={handleNormalMode}
             onFloatingMode={() => handleRestoreFromBubble('mini')}
+            onOpenTerminal={handleOpenTerminal}
             viewMode={viewMode}
           />
           <div className="chat-container-centered d-flex flex-column align-items-center flex-grow-1 overflow-hidden position-relative">
@@ -376,6 +386,7 @@ export default function App() {
           onOpenSettings={() => setIsSettingsOpen(true)}
           onNormalMode={handleNormalMode}
           onFloatingMode={() => handleRestoreFromBubble('mini')}
+          onOpenTerminal={handleOpenTerminal}
           viewMode={viewMode}
         />
         <ChatWindow messages={messages} isTyping={isTyping} newMsgId={newMsgId} />

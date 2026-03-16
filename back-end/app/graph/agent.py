@@ -7,7 +7,6 @@ from langchain_ollama import ChatOllama
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, ToolMessage
 from langgraph.graph import StateGraph, MessagesState, START
-from langgraph.graph import StateGraph, MessagesState, START
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.prebuilt import create_react_agent
 
@@ -84,13 +83,13 @@ def build_system_prompt(state: MessagesState) -> list:
             continue
         if key not in BUILTIN_TOOLS:
             rule_text = key.replace('_', ' ')
-            # Reversed logic:
-            # If switch is ON (enabled), the rule is ENFORCED (STRICTLY FORBIDDEN to do it)
-            # If switch is OFF (disabled), the rule is IGNORED (EXPLICITLY ALLOWED to do it)
+            # Standard logic:
+            # If switch is ON (enabled), the action is ALLOWED.
+            # If switch is OFF (disabled), the action is FORBIDDEN.
             if enabled:
-                custom_rules_disabled.append(rule_text)
-            else:
                 custom_rules_enabled.append(rule_text)
+            else:
+                custom_rules_disabled.append(rule_text)
     
     if custom_rules_enabled or custom_rules_disabled:
         base_prompt += "\n\nCRITICAL USER INSTRUCTIONS / CUSTOM RULES:\n"
@@ -131,7 +130,8 @@ def build_system_prompt(state: MessagesState) -> list:
 
 # Global singleton for the app
 _agent_app = None
-_checkpointer_ctx = AsyncSqliteSaver.from_conn_string("stm.db")
+STM_DB_PATH = os.getenv("STM_DB_PATH", "stm.db")
+_checkpointer_ctx = AsyncSqliteSaver.from_conn_string(STM_DB_PATH)
 _saver = None
 
 async def get_app():

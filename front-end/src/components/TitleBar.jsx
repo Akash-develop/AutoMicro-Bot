@@ -6,7 +6,7 @@ import { useState, useEffect, useRef } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import logo from '../assets/logo-recolored.png';
 
-export default function TitleBar({ onClearChat, onToggleHistory, onMinimize, onOpenSettings, onNormalMode, onFloatingMode, viewMode }) {
+export default function TitleBar({ onClearChat, onToggleHistory, onMinimize, onOpenSettings, onNormalMode, onFloatingMode, onOpenTerminal, viewMode }) {
     const appWindow = getCurrentWindow();
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const menuRef = useRef(null);
@@ -91,7 +91,7 @@ export default function TitleBar({ onClearChat, onToggleHistory, onMinimize, onO
             {/* Dropdown Menu */}
             {isMenuOpen && (
                 <div ref={menuRef} className="dropdown-menu-glass">
-                    <button className="dropdown-item-custom" onClick={() => handleAction()}>
+                    <button className="dropdown-item-custom" onClick={() => handleAction(onOpenTerminal)}>
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>
                         System Terminal
                     </button>

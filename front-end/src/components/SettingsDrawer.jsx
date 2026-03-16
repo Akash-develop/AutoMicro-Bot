@@ -131,7 +131,6 @@ export default function SettingsDrawer({ isOpen, onClose }) {
 
         try {
             await deletePermission(toolName);
-            // Sync locks to backend if it was locked
             if (updatedLocks.length !== lockedTools.length) {
                 await updatePermissions(updated, updatedLocks);
             }
@@ -184,7 +183,6 @@ export default function SettingsDrawer({ isOpen, onClose }) {
         delete updated[oldName];
         updated[newName] = val;
 
-        // Carry over lock state if applicable
         let newLocks = lockedTools;
         if (lockedTools.includes(oldName)) {
             newLocks = newLocks.filter(t => t !== oldName);
@@ -207,9 +205,42 @@ export default function SettingsDrawer({ isOpen, onClose }) {
         return name.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
     };
 
+    // Sub-renderers for cleaner code structure
+    const renderSidebarHeader = (title, showBack = false) => (
+        <div className="p-3 border-bottom border-secondary d-flex justify-content-between align-items-center">
+            <div className="d-flex align-items-center gap-2">
+                {showBack && (
+                    <button
+                        onClick={() => setActiveMenu('main')}
+                        className="btn btn-link p-0 text-secondary hover-text-white d-flex align-items-center me-1"
+                        title="Back to Settings"
+                    >
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+                    </button>
+                )}
+                <h6 className="m-0 text-white fw-bold d-flex align-items-center gap-2">
+                    {title}
+                    {title === 'Tool Permissions' && (
+                        <button
+                            onClick={toggleGlobalLock}
+                            className="btn btn-link p-0 text-secondary hover-text-white d-flex align-items-center"
+                            title={isGlobalLocked ? "Global View Locked" : "Global View Unlocked"}
+                        >
+                            {isGlobalLocked ? (
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+                            ) : (
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 9.9-1"></path></svg>
+                            )}
+                        </button>
+                    )}
+                </h6>
+            </div>
+            <button onClick={onClose} className="btn-close btn-close-white" style={{ fontSize: '0.8rem' }} />
+        </div>
+    );
+
     return (
         <>
-            {/* Backdrop */}
             <div
                 className={`drawer-backdrop ${isOpen ? 'show' : ''}`}
                 onClick={onClose}
@@ -221,7 +252,6 @@ export default function SettingsDrawer({ isOpen, onClose }) {
                 }}
             />
 
-            {/* Drawer */}
             <div
                 className="history-drawer"
                 style={{
@@ -235,12 +265,7 @@ export default function SettingsDrawer({ isOpen, onClose }) {
             >
                 {activeMenu === 'main' ? (
                     <>
-                        <div className="p-3 border-bottom border-secondary d-flex justify-content-between align-items-center">
-                            <h6 className="m-0 text-white fw-bold d-flex align-items-center gap-2">
-                                Settings
-                            </h6>
-                            <button onClick={onClose} className="btn-close btn-close-white" style={{ fontSize: '0.8rem' }} />
-                        </div>
+                        {renderSidebarHeader('Settings')}
                         <div className="flex-grow-1 overflow-auto p-2">
                             <button
                                 onClick={() => setActiveMenu('permissions')}
@@ -261,38 +286,13 @@ export default function SettingsDrawer({ isOpen, onClose }) {
                             </button>
 
                             <div className="mt-4 px-3 text-secondary" style={{ fontSize: '0.8rem' }}>
-                                More settings coming soon...
+                                Build version: 1.0.1
                             </div>
                         </div>
                     </>
                 ) : activeMenu === 'permissions' ? (
                     <>
-                        <div className="p-3 border-bottom border-secondary d-flex justify-content-between align-items-center">
-                            <div className="d-flex align-items-center gap-2">
-                                <button
-                                    onClick={() => setActiveMenu('main')}
-                                    className="btn btn-link p-0 text-secondary hover-text-white d-flex align-items-center me-1"
-                                    title="Back to Settings"
-                                >
-                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
-                                </button>
-                                <h6 className="m-0 text-white fw-bold d-flex align-items-center gap-2">
-                                    Tool Permissions
-                                    <button
-                                        onClick={toggleGlobalLock}
-                                        className="btn btn-link p-0 text-secondary hover-text-white d-flex align-items-center"
-                                        title={isGlobalLocked ? "Click to Unlock Global View" : "Click to Lock Global View"}
-                                    >
-                                        {isGlobalLocked ? (
-                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
-                                        ) : (
-                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 9.9-1"></path></svg>
-                                        )}
-                                    </button>
-                                </h6>
-                            </div>
-                            <button onClick={onClose} className="btn-close btn-close-white" style={{ fontSize: '0.8rem' }} />
-                        </div>
+                        {renderSidebarHeader('Tool Permissions', true)}
 
                         <div className="flex-grow-1 overflow-auto p-3">
                             {loading ? (
@@ -315,6 +315,7 @@ export default function SettingsDrawer({ isOpen, onClose }) {
                                         .map((tool) => {
                                             const isIndividuallyLocked = lockedTools.includes(tool);
                                             const effectiveLocked = isGlobalLocked || isIndividuallyLocked;
+                                            const isEnabled = permissions[tool] || false;
 
                                             return (
                                                 <div key={tool} className="d-flex justify-content-between align-items-center mb-3">
@@ -342,12 +343,11 @@ export default function SettingsDrawer({ isOpen, onClose }) {
                                                                         opacity: effectiveLocked ? 0.7 : 1
                                                                     }}
                                                                     onClick={() => { if (!effectiveLocked) startEdit(tool); }}
-                                                                    title={effectiveLocked ? "Unlock to edit" : "Click to edit custom rule"}
+                                                                    title={effectiveLocked ? "Unlock to edit" : "Click to edit rule"}
                                                                 >
                                                                     {formatToolName(tool)}
                                                                 </span>
 
-                                                                {/* Individual Lock Toggle */}
                                                                 <button
                                                                     onClick={() => handleIndividualLock(tool)}
                                                                     className="btn btn-link p-0 ms-2 text-secondary hover-text-white d-flex align-items-center"
@@ -363,13 +363,13 @@ export default function SettingsDrawer({ isOpen, onClose }) {
                                                             </div>
 
                                                             <div className="d-flex align-items-center gap-2">
-                                                                <div className="form-check form-switch m-0">
+                                                                <div className="form-check form-switch m-0" title={isEnabled ? "Rule Active" : "Rule Inactive"}>
                                                                     <input
                                                                         className="form-check-input"
                                                                         type="checkbox"
                                                                         role="switch"
                                                                         id={`switch-${tool}`}
-                                                                        checked={permissions[tool] || false}
+                                                                        checked={isEnabled}
                                                                         onChange={() => !effectiveLocked && handleToggle(tool)}
                                                                         style={{ cursor: effectiveLocked ? 'not-allowed' : 'pointer' }}
                                                                         disabled={effectiveLocked}
@@ -378,7 +378,7 @@ export default function SettingsDrawer({ isOpen, onClose }) {
                                                                 <button
                                                                     onClick={() => !effectiveLocked && handleDelete(tool)}
                                                                     className={`btn btn-link p-0 text-danger hover-opacity-100 ${effectiveLocked ? 'opacity-25' : 'opacity-75'}`}
-                                                                    title={effectiveLocked ? "Unlock to delete" : "Delete custom rule"}
+                                                                    title={effectiveLocked ? "Unlock to delete" : "Delete rule"}
                                                                     disabled={effectiveLocked}
                                                                     style={{ cursor: effectiveLocked ? 'not-allowed' : 'pointer' }}
                                                                 >
@@ -396,21 +396,7 @@ export default function SettingsDrawer({ isOpen, onClose }) {
                     </>
                 ) : (
                     <>
-                        <div className="p-3 border-bottom border-secondary d-flex justify-content-between align-items-center">
-                            <div className="d-flex align-items-center gap-2">
-                                <button
-                                    onClick={() => setActiveMenu('main')}
-                                    className="btn btn-link p-0 text-secondary hover-text-white d-flex align-items-center me-1"
-                                    title="Back to Settings"
-                                >
-                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
-                                </button>
-                                <h6 className="m-0 text-white fw-bold d-flex align-items-center gap-2">
-                                    LTM Storage
-                                </h6>
-                            </div>
-                            <button onClick={onClose} className="btn-close btn-close-white" style={{ fontSize: '0.8rem' }} />
-                        </div>
+                        {renderSidebarHeader('LTM Storage', true)}
                         
                         <div className="flex-grow-1 overflow-auto p-3">
                             {loading ? (

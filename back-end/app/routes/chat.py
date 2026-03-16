@@ -108,6 +108,18 @@ async def rename_conversation_endpoint(session_id: str, req: RenameRequest):
 
 # ─── WebSocket Streaming ──────────────────────────────────────────────────────
 
+@router.post("/terminal/open")
+async def open_terminal_endpoint():
+    """Quickly open a local terminal window (macOS)."""
+    try:
+        import subprocess
+        subprocess.run(["open", "-a", "Terminal", "."], check=True)
+        return {"status": "success"}
+    except Exception as e:
+        logger.error(f"Failed to open terminal: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.websocket("/ws/{session_id}")
 async def websocket_chat(websocket: WebSocket, session_id: str):
     """WebSocket endpoint for token-by-token streaming using LangGraph."""
@@ -164,52 +176,57 @@ async def websocket_chat(websocket: WebSocket, session_id: str):
             input_messages = {"messages": [HumanMessage(content=message_content)]}
             await save_message(session_id, "user", user_message)
 
+            # --- Streaming Loop ---
             full_response = ""
-            async for chunk, metadata in app.astream(
-                input_messages,
-                config,
-                stream_mode="messages"
-            ):
-                # Check for client disconnect to abort processing immediately
-                if websocket.client_state.value != 1: # 1 is CLOSED (benign disconnect check)
-                    # Use a more standard check for FastAPI/Starlette
-                    break
+            try:
+                async for chunk, metadata in app.astream(
+                    input_messages,
+                    config,
+                    stream_mode="messages"
+                ):
+                    # Check for client disconnect to abort processing
+                    if websocket.client_state.value != 1: # 1 is CONNECTED in some Starlette versions, actually websocket.client_state == WebSocketState.CONNECTED is better
+                        break
 
-                content = getattr(chunk, "content", None)
-                chunk_type = chunk.__class__.__name__
+                    content = getattr(chunk, "content", None)
+                    chunk_type = chunk.__class__.__name__
 
-                # Stream regular text tokens
-                if chunk_type in ("AIMessageChunk", "AIMessage") and isinstance(content, str) and content:
-                    full_response += content
-                    await websocket.send_text(json.dumps({
-                        "type": "token",
-                        "content": content
-                    }))
-                
-                # Stream tool start
-                tool_call_chunks = getattr(chunk, "tool_call_chunks", None)
-                if tool_call_chunks:
-                    for tc in tool_call_chunks:
-                        if tc.get("name"):
-                            await websocket.send_text(json.dumps({
-                                "type": "tool_start",
-                                "command": tc["name"]
-                            }))
-                            # Removed redundant text note: it's already visual in the frontend
-                
-                # Stream tool output
-                if chunk_type in ("ToolMessageChunk", "ToolMessage") and getattr(chunk, "name", None):
-                    await websocket.send_text(json.dumps({
-                        "type": "tool_output",
-                        "result": str(content)
-                    }))
-                    # Removed redundant text note
+                    # 1. Handle Text Tokens
+                    if chunk_type in ("AIMessageChunk", "AIMessage") and isinstance(content, str) and content:
+                        full_response += content
+                        await websocket.send_text(json.dumps({
+                            "type": "token",
+                            "content": content
+                        }))
+                    
+                    # 2. Handle Tool Activations
+                    tool_call_chunks = getattr(chunk, "tool_call_chunks", None)
+                    if tool_call_chunks:
+                        for tc in tool_call_chunks:
+                            if tc.get("name"):
+                                await websocket.send_text(json.dumps({
+                                    "type": "tool_start",
+                                    "command": tc["name"]
+                                }))
+                    
+                    # 3. Handle Tool Results
+                    if chunk_type in ("ToolMessageChunk", "ToolMessage") and getattr(chunk, "name", None):
+                        await websocket.send_text(json.dumps({
+                            "type": "tool_output",
+                            "result": str(content)
+                        }))
 
+            except Exception as stream_err:
+                error_msg = str(stream_err)
+                if "thought_signature" in error_msg:
+                    logger.warning(f"Resiliently handled provider artifact: {error_msg}")
+                else:
+                    logger.error(f"Stream interrupted: {error_msg}")
+                    await websocket.send_text(json.dumps({"type": "error", "content": error_msg}))
+
+            # --- Post-Stream Completion ---
             await save_message(session_id, "assistant", full_response.strip())
-
-            await websocket.send_text(json.dumps({
-                "type": "done"
-            }))
+            await websocket.send_text(json.dumps({"type": "done"}))
 
     except WebSocketDisconnect:
         logger.info(f"WebSocket disconnected for session {session_id}")

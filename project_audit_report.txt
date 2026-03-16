@@ -1,0 +1,69 @@
+# AutoMicro-Bot: Project Audit Report
+Date: 2026-03-16
+
+This report outlines identified issues, potential problems, and architectural weaknesses in the project following the initial round of fixes.
+
+## 1. Security Concerns
+
+### 1.1 Unsanitized Shell Execution
+**File:** `back-end/app/graph/tools/terminal_executor.py`
+**Severity:** HIGH
+The `execute_terminal_command` tool uses `subprocess.run(command, shell=True)`. While intended for developer use, this is inherently risky as there is no sanitization or restriction on the commands being run. A malicious prompt or prompt injection could lead to arbitrary code execution (e.g., `rm -rf /` or data exfiltration).
+**Recommendation:** Implement a whitelist of allowed commands or use `shell=False` with pre-parsed arguments where possible.
+
+### 1.2 Local Network Exposure (Partial Fix)
+**File:** `back-end/app/main.py`
+**Severity:** MEDIUM
+Although the default host was changed to `127.0.0.1`, many users might still run with `--host 0.0.0.0` for convenience. Given the existence of the terminal executor, this remains a significant risk if the system is not behind a firewall or lacks authentication.
+**Recommendation:** Implement a simple API key or shared secret authentication for the FastAPI backend and WebSocket connections.
+
+## 2. Architectural Inefficiencies
+
+### 2.1 Disk I/O in Permission Checks
+**File:** `back-end/app/graph/tools/permission_manager.py`
+**Severity:** LOW/MEDIUM
+The `check_permission` decorator calls `load_permissions()` on every tool call, which performs a synchronous disk read (`json.load`). In complex agent runs involving multiple tool calls, this introduces unnecessary latency and disk I/O pressure.
+**Recommendation:** Cache the permissions in memory and use a file watcher or a manual refresh trigger to update them when they change.
+
+### 2.2 Hardcoded Legacy Rules
+**File:** `back-end/app/graph/tools/permission_manager.py`
+**Severity:** LOW
+The rule `perms["dont_do_user_saw_crash_my_os"] = True` is hardcoded in the codebase. This is inflexible and clutters the system prompt with rules that might not be applicable to all users.
+**Recommendation:** Move all default rules to a configuration JSON file or the database.
+
+### 2.3 Hardcoded State Persistence Path
+**File:** `back-end/app/graph/agent.py`
+**Severity:** LOW
+The `AsyncSqliteSaver` is hardcoded to use `stm.db`. This limits the ability to configure storage locations via environment variables for different environments (dev/prod/test).
+**Recommendation:** Use an environment variable (e.g., `STM_DB_PATH`) with a sensible default.
+
+## 3. Code Quality & Resilience
+
+### 3.1 Fragile Streaming Error Handling
+**File:** `back-end/app/routes/chat.py`
+**Severity:** MEDIUM
+The handling of `thought_signature` errors is a "catch and suppress" approach tailored specifically for certain LLM provider behaviors (like Ollama). This logic is scattered across the chat routes and might mask real parsing issues.
+**Recommendation:** Centralize streaming parsing logic in a dedicated service or handler that can specifically detect and clean provider-specific artifacts without interrupting the message chain.
+
+### 3.2 Duplicate Logic (Title Generation)
+**File:** `back-end/app/routes/chat.py`
+**Severity:** LOW
+The `make_title` function is simple but duplicated in intent with what might eventually be a more complex LLM-driven title generation.
+**Recommendation:** Consider an optional background task to generate better titles using the LLM once a session has a few messages.
+
+## 4. UI/UX Improvements
+
+### 4.1 Dead Menu Items
+**File:** `front-end/src/components/TitleBar.jsx`
+**Severity:** LOW
+The "System Terminal" option in the dropdown menu has no assigned action (`() => handleAction()`), leading to a "dead" UI element.
+**Recommendation:** Implement the intended functionality (e.g., opening a local terminal window or the internal terminal view) or remove the item until implemented.
+
+### 4.2 Error Visibility in Streaming
+**File:** `front-end/src/api/chat.js`
+**Severity:** LOW
+While WebSocket errors are caught, they often result in the connection simply closing. The user might not always see a clear explanation of *why* a stream stopped if a network error occurs mid-way.
+**Recommendation:** Implement a toast or status indicator in the `InputBar` or `ChatWindow` to explicitly show WebSocket connection states and specific error messages.
+
+## 5. Summary
+The project is in a solid state for a desktop assistant but requires tightening in **Security** (Terminal tool safety) and **Architecture** (I/O optimization) before a broader release.

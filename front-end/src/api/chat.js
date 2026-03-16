@@ -108,3 +108,11 @@ export async function deleteConversation(sessionId) {
   if (!res.ok) throw new Error(`Failed to delete conversation: ${res.status}`);
   return res.json();
 }
+/**
+ * Quickly open a local terminal window via the backend.
+ */
+export async function openTerminal() {
+  const res = await fetch(`${BASE_URL}/terminal/open`, { method: 'POST' });
+  if (!res.ok) throw new Error(`Failed to open terminal: ${res.status}`);
+  return res.json();
+}
