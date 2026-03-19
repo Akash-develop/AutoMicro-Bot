@@ -25,6 +25,17 @@ async def init_db():
             )
         """)
         await db.execute("CREATE INDEX IF NOT EXISTS idx_session ON messages(session_id)")
+        # Bug #7 fix: compound index for fast history queries by session ordered by time
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_messages_sess_ts ON messages(session_id, timestamp)")
+
+        # ── Bug #1 Fix: conversations table was missing entirely ────────────
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS conversations (
+                session_id TEXT PRIMARY KEY,
+                title      TEXT NOT NULL DEFAULT 'New Conversation',
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
 
         # LLM Settings table (Current Active Configuration)
         await db.execute("""

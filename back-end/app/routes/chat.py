@@ -5,6 +5,7 @@ FastAPI routes for standard Chat POST and WebSocket streaming.
 import json
 import logging
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException
+from starlette.websockets import WebSocketState
 from app.models.schemas import (
     ChatRequest, ChatResponse, HistoryResponse, MessageRecord,
     DeleteResponse, SessionSummary, RenameRequest
@@ -44,9 +45,15 @@ async def chat_endpoint(req: ChatRequest):
         )
     except Exception as e:
         error_msg = str(e)
+        # Bug #3 fix: actually retry instead of the old dead `pass`
         if "thought_signature" in error_msg:
-            # Re-run getting agent response if the tool call failed due to parsing on Ollama
-            pass
+            logger.warning("Resiliently retrying after thought_signature artifact...")
+            try:
+                response_text = await get_agent_response(req.session_id, req.message)
+                return ChatResponse(response=response_text, session_id=req.session_id)
+            except Exception as retry_err:
+                logger.error(f"Retry also failed: {retry_err}")
+                raise HTTPException(status_code=500, detail=str(retry_err))
         logger.error(f"Error in chat endpoint: {error_msg}")
         raise HTTPException(status_code=500, detail=error_msg)
 
@@ -81,6 +88,21 @@ async def delete_history_endpoint(session_id: str):
             session_id=session_id,
             deleted=1,
             message="Conversation deleted successfully"
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# Bug #5 fix: clear only messages, keep the conversation record
+@router.delete("/history/{session_id}/messages", response_model=DeleteResponse)
+async def clear_messages_endpoint(session_id: str):
+    """Clear all messages for a session but keep the conversation record."""
+    try:
+        await clear_history(session_id)
+        return DeleteResponse(
+            session_id=session_id,
+            deleted=1,
+            message="Messages cleared successfully"
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -159,8 +181,10 @@ async def websocket_chat(websocket: WebSocket, session_id: str):
                     )
 
             # Auto-create conversation on first message
+            # Bug #8 fix: use original user text for title (not attachment-prepended version)
+            original_user_text = payload.get("message", "")
             if await is_first_message(session_id):
-                await create_conversation(session_id, make_title(user_message))
+                await create_conversation(session_id, make_title(original_user_text or user_message))
 
             config = {"configurable": {"thread_id": session_id}}
             
@@ -178,51 +202,61 @@ async def websocket_chat(websocket: WebSocket, session_id: str):
 
             # --- Streaming Loop ---
             full_response = ""
-            try:
-                async for chunk, metadata in app.astream(
-                    input_messages,
-                    config,
-                    stream_mode="messages"
-                ):
-                    # Check for client disconnect to abort processing
-                    if websocket.client_state.value != 1: # 1 is CONNECTED in some Starlette versions, actually websocket.client_state == WebSocketState.CONNECTED is better
+            max_retries = 2
+            
+            for attempt in range(max_retries):
+                try:
+                    # On retry (attempt > 0), pass None to tell LangGraph to resume from checkpointer
+                    stream_inputs = input_messages if attempt == 0 else None
+                    async for chunk, metadata in app.astream(
+                        stream_inputs,
+                        config,
+                        stream_mode="messages"
+                    ):
+                        # Bug #6 fix: use WebSocketState enum instead of magic number
+                        if websocket.client_state != WebSocketState.CONNECTED:
+                            break
+
+                        content = getattr(chunk, "content", None)
+                        chunk_type = chunk.__class__.__name__
+
+                        # 1. Handle Text Tokens
+                        if chunk_type in ("AIMessageChunk", "AIMessage") and isinstance(content, str) and content:
+                            full_response += content
+                            await websocket.send_text(json.dumps({
+                                "type": "token",
+                                "content": content
+                            }))
+                        
+                        # 2. Handle Tool Activations
+                        tool_call_chunks = getattr(chunk, "tool_call_chunks", None)
+                        if tool_call_chunks:
+                            for tc in tool_call_chunks:
+                                if tc.get("name"):
+                                    await websocket.send_text(json.dumps({
+                                        "type": "tool_start",
+                                        "command": tc["name"]
+                                    }))
+                        
+                        # 3. Handle Tool Results
+                        if chunk_type in ("ToolMessageChunk", "ToolMessage") and getattr(chunk, "name", None):
+                            await websocket.send_text(json.dumps({
+                                "type": "tool_output",
+                                "result": str(content)
+                            }))
+                            
+                    # If stream finished successfully without error, break retry loop
+                    break
+
+                except Exception as stream_err:
+                    error_msg = str(stream_err)
+                    if "thought_signature" in error_msg and attempt < max_retries - 1:
+                        logger.warning(f"Resiliently retrying stream after thought_signature (attempt {attempt + 1})...")
+                        continue
+                    else:
+                        logger.error(f"Stream interrupted: {error_msg}")
+                        await websocket.send_text(json.dumps({"type": "error", "content": error_msg}))
                         break
-
-                    content = getattr(chunk, "content", None)
-                    chunk_type = chunk.__class__.__name__
-
-                    # 1. Handle Text Tokens
-                    if chunk_type in ("AIMessageChunk", "AIMessage") and isinstance(content, str) and content:
-                        full_response += content
-                        await websocket.send_text(json.dumps({
-                            "type": "token",
-                            "content": content
-                        }))
-                    
-                    # 2. Handle Tool Activations
-                    tool_call_chunks = getattr(chunk, "tool_call_chunks", None)
-                    if tool_call_chunks:
-                        for tc in tool_call_chunks:
-                            if tc.get("name"):
-                                await websocket.send_text(json.dumps({
-                                    "type": "tool_start",
-                                    "command": tc["name"]
-                                }))
-                    
-                    # 3. Handle Tool Results
-                    if chunk_type in ("ToolMessageChunk", "ToolMessage") and getattr(chunk, "name", None):
-                        await websocket.send_text(json.dumps({
-                            "type": "tool_output",
-                            "result": str(content)
-                        }))
-
-            except Exception as stream_err:
-                error_msg = str(stream_err)
-                if "thought_signature" in error_msg:
-                    logger.warning(f"Resiliently handled provider artifact: {error_msg}")
-                else:
-                    logger.error(f"Stream interrupted: {error_msg}")
-                    await websocket.send_text(json.dumps({"type": "error", "content": error_msg}))
 
             # --- Post-Stream Completion ---
             await save_message(session_id, "assistant", full_response.strip())

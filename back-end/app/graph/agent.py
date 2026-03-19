@@ -28,13 +28,19 @@ load_dotenv()
 # ── Global Agent State ───────────────────────────────────────────
 _agent_app = None
 _saver = None
+_current_provider = "ollama"  # Track provider for specialized message formatting
+_current_model = "llama3"     # Track model name in case provider is aliased
 STM_DB_PATH = os.getenv("STM_DB_PATH", "stm.db")
 _checkpointer_ctx = AsyncSqliteSaver.from_conn_string(STM_DB_PATH)
 
 def reset_agent():
-    """Global hook to clear the singleton and force re-init with new settings."""
-    global _agent_app
+    """Global hook to clear the singleton and force re-init with new settings.
+    Bug #4 fix: also clears _saver so the SQLite checkpointer connection
+    is cleanly re-opened on next get_app() call (prevents file-handle leaks).
+    """
+    global _agent_app, _saver
     _agent_app = None
+    _saver = None
 
 # ── LangGraph Setup ───────────────────────────────────────
 
@@ -100,24 +106,31 @@ def build_system_prompt(state: MessagesState) -> list:
             relevant_memories = search_memory(latest_user_msg, n_results=3)
             if relevant_memories:
                 base_prompt += "\n\nRELEVANT LONG-TERM MEMORIES (Context for this conversation):\n"
-                for mem in relevant_memories:
-                    base_prompt += f"- {mem}\n"
         except Exception as e:
             pass
 
-    safe_messages = []
-    for msg in state["messages"]:
-        if getattr(msg, "tool_calls", None) or (getattr(msg, "type", "") == "ai" and getattr(msg, "tool_calls", None)):
-            # Flatten AIMessage with tool_calls into a plain text message
-            content = msg.content or "I am executing a tool."
-            safe_messages.append(AIMessage(content=content))
-        elif getattr(msg, "type", "") == "tool" or isinstance(msg, ToolMessage):
-            # Format ToolMessages as SystemMessages to provide context without triggering human-like reactions
-            safe_messages.append(SystemMessage(content=f"Tool '{getattr(msg, 'name', 'tool')}' executed. Result: {msg.content}"))
-        else:
-            safe_messages.append(msg)
+    # We must NOT flatten or strip `tool_calls` from AIMessages for most providers (like OpenAI/Ollama)
+    # as it breaks native tool chaining. However, Google Gemini throws a 400 `thought_signature` error
+    # if it loads historical tool calls from the SQLite checkpointer that lack proprietary Google kwargs.
+    global _current_provider, _current_model
+    if _current_provider == "gemini" or "gemini" in _current_model:
+        safe_messages = []
+        for msg in state["messages"]:
+            if getattr(msg, "tool_calls", None) or (getattr(msg, "type", "") == "ai" and getattr(msg, "tool_calls", None)):
+                # Strip native tool_calls to bypass Gemini 400 error
+                tool_names = ", ".join([tc.get("name", "tool") for tc in getattr(msg, "tool_calls", [])])
+                content = msg.content or f"I decided to execute tools: {tool_names}."
+                safe_messages.append(AIMessage(content=content))
+            elif getattr(msg, "type", "") == "tool" or isinstance(msg, ToolMessage):
+                # Present the tool result as a HumanMessage so the LLM recognizes it as an external observation
+                # (Using SystemMessage here causes infinite loops because the LLM ignores it and repeats the tool)
+                safe_messages.append(HumanMessage(content=f"[Observation from tool '{getattr(msg, 'name', 'tool')}']:\n{msg.content}"))
+            else:
+                safe_messages.append(msg)
+        return [SystemMessage(content=base_prompt)] + safe_messages
 
-    return [SystemMessage(content=base_prompt)] + safe_messages
+    # Default: Return pristine messages for OpenAI, Ollama, etc.
+    return [SystemMessage(content=base_prompt)] + state["messages"]
 
 async def get_app():
     """Lazy initializer for the LangGraph app with Async checkpointer."""
@@ -136,6 +149,10 @@ async def get_app():
 
         # Initialize LLM based on settings
         provider = conf['provider'].lower()
+        global _current_provider, _current_model
+        _current_provider = provider
+        _current_model = conf['model'].lower()
+        
         if provider in ("openai", "openai-compat"):
             llm = ChatOpenAI(
                 model=conf['model'],

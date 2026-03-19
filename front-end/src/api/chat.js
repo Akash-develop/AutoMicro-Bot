@@ -66,10 +66,12 @@ export async function getHistory(sessionId) {
 }
 
 /**
- * Clear chat history for a session.
+ * Clear ONLY the messages for a session (keeps the conversation record).
+ * Bug #5 fix: previously called DELETE /history/{id} which wiped the entire
+ * conversation. Now calls the correct /history/{id}/messages endpoint.
  */
 export async function clearHistory(sessionId) {
-  const res = await fetch(`${BASE_URL}/history/${sessionId}`, {
+  const res = await fetch(`${BASE_URL}/history/${sessionId}/messages`, {
     method: 'DELETE',
   });
   if (!res.ok) throw new Error(`Failed to clear history: ${res.status}`);

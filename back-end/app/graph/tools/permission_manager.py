@@ -7,6 +7,10 @@ logger = logging.getLogger(__name__)
 
 CONFIG_PATH = os.path.join(os.path.dirname(__file__), "..", "config", "tool_permissions.json")
 
+# Bug #2 fix: Only list tools that are actually implemented and registered in agent.py.
+# Previously, 14 desktop-automation ghost tools were listed here (get_desktop_state,
+# control_app, mouse_click, etc.) but none were imported or added to the tools[] list,
+# so their permission toggles in the Settings UI had zero effect — very misleading.
 BUILTIN_TOOLS = {
     "execute_terminal_command": True,
     "open_url": True,
@@ -15,22 +19,7 @@ BUILTIN_TOOLS = {
     "create_folder": True,
     "create_file": True,
     "create_excel_with_sample_data": True,
-    "get_desktop_state": True,
-    "control_app": True,
-    "mouse_click": True,
-    "keyboard_type": True,
-    "move_mouse": True,
-    "scroll_mouse": True,
-    "drag_mouse": True,
-    "press_keys": True,
-    "scrape_web": True,
-    "wait": True,
-    "get_active_tab_details": True,
-    "get_tab_content": True,
-    "run_browser_js": True,
-    "get_ui_elements": True,
-    "click_element": True,
-    "type_in_element": True
+    "save_long_term_memory": True,
 }
 
 # In-memory cache for permissions
