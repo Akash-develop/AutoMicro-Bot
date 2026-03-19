@@ -3,7 +3,11 @@
  * Right-to-left drawer for managing agent tool permissions and memories.
  */
 import { useState, useEffect } from 'react';
-import { getPermissions, updatePermissions, deletePermission, getMemories, deleteMemory, clearMemories } from '../api/settings.js';
+import { 
+    getPermissions, updatePermissions, deletePermission, 
+    getMemories, deleteMemory, clearMemories, 
+    getLLMSettings, updateLLMSettings, getLLMHistory, activateLLMConfig, deleteLLMHistory 
+} from '../api/settings.js';
 
 export default function SettingsDrawer({ isOpen, onClose }) {
     const [activeMenu, setActiveMenu] = useState('main'); // 'main', 'permissions', 'memory'
@@ -13,6 +17,15 @@ export default function SettingsDrawer({ isOpen, onClose }) {
     const [loading, setLoading] = useState(true);
     const [editingTool, setEditingTool] = useState(null);
     const [editValue, setEditValue] = useState("");
+    const [llmSettings, setLlmSettings] = useState({
+        provider: 'ollama',
+        base_url: 'http://localhost:11434',
+        api_key: '',
+        model: 'llama3'
+    });
+    const [llmHistory, setLlmHistory] = useState([]);
+    const [activeTab, setActiveTab] = useState('config'); // 'config', 'history'
+    const [saving, setSaving] = useState(false);
     const [isGlobalLocked, setIsGlobalLocked] = useState(
         localStorage.getItem('toolSettingsLocked') === 'true'
     );
@@ -38,8 +51,36 @@ export default function SettingsDrawer({ isOpen, onClose }) {
         "sleep_system",
         "create_folder",
         "create_file",
-        "create_excel_with_sample_data"
+        "create_excel_with_sample_data",
+        "get_desktop_state",
+        "control_app",
+        "mouse_click",
+        "keyboard_type",
+        "move_mouse",
+        "scroll_mouse",
+        "drag_mouse",
+        "press_keys",
+        "scrape_web",
+        "wait"
     ];
+
+    const TOOL_LABELS = {
+        "search_web": "Internet Search",
+        "execute_terminal_command": "System Terminal",
+        "get_desktop_state": "Desktop State",
+        "control_app": "App Control",
+        "mouse_click": "Mouse Click",
+        "keyboard_type": "Keyboard Type",
+        "move_mouse": "Move Mouse",
+        "scroll_mouse": "Scroll Mouse",
+        "drag_mouse": "Drag Mouse",
+        "press_keys": "Press Keys",
+        "scrape_web": "Scrape Web",
+        "wait": "Wait",
+        "get_active_tab_details": "Active Tab Info",
+        "get_tab_content": "Read Page Text",
+        "run_browser_js": "Run Browser JS"
+    };
 
     useEffect(() => {
         if (isOpen && activeMenu === 'permissions') {
@@ -65,6 +106,19 @@ export default function SettingsDrawer({ isOpen, onClose }) {
                     setMemories(data.memories || []);
                 })
                 .catch(err => console.error("Failed to fetch memories", err))
+                .finally(() => setLoading(false));
+        }
+    }, [isOpen, activeMenu]);
+
+    useEffect(() => {
+        if (isOpen && activeMenu === 'llm') {
+            setLoading(true);
+            Promise.all([getLLMSettings(), getLLMHistory()])
+                .then(([settings, history]) => {
+                    setLlmSettings(settings);
+                    setLlmHistory(history);
+                })
+                .catch(err => console.error("Failed to fetch LLM data", err))
                 .finally(() => setLoading(false));
         }
     }, [isOpen, activeMenu]);
@@ -201,6 +255,55 @@ export default function SettingsDrawer({ isOpen, onClose }) {
         }
     };
 
+    const handleSaveLLM = async (e) => {
+        e.preventDefault();
+        setSaving(true);
+        try {
+            await updateLLMSettings(llmSettings);
+            const history = await getLLMHistory();
+            setLlmHistory(history);
+            alert("LLM Settings updated and saved to history.");
+            setActiveTab('history');
+        } catch (err) {
+            alert("Failed to update LLM settings: " + err.message);
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleActivateConfig = async (id) => {
+        console.log("Activating config:", id);
+        try {
+            await activateLLMConfig(id);
+            const [settings, history] = await Promise.all([getLLMSettings(), getLLMHistory()]);
+            setLlmSettings(settings);
+            setLlmHistory(history);
+            alert("Configuration activated.");
+        } catch (err) {
+            console.error("Activation failed:", err);
+            alert("Failed to activate configuration: " + err.message);
+        }
+    };
+
+    const handleDeleteHistory = async (id) => {
+        console.log("handleDeleteHistory CLICKED for ID:", id);
+        try {
+            console.log("Calling deleteLLMHistory API...");
+            const res = await deleteLLMHistory(id);
+            console.log("API returned success:", res);
+            
+            setLlmHistory(prev => {
+                const updated = prev.filter(h => h.id != id);
+                console.log("Old history count:", prev.length, "New history count:", updated.length);
+                return updated;
+            });
+            alert("Deleted successfully.");
+        } catch (err) {
+            console.error("CRITICAL DELETE ERROR:", err);
+            alert("Failed to delete history: " + err.message);
+        }
+    };
+
     const formatToolName = (name) => {
         return name.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
     };
@@ -285,6 +388,15 @@ export default function SettingsDrawer({ isOpen, onClose }) {
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-secondary"><polyline points="9 18 15 12 9 6"></polyline></svg>
                             </button>
 
+                            <button
+                                onClick={() => setActiveMenu('llm')}
+                                className="w-100 text-start btn btn-dark bg-transparent border-0 d-flex justify-content-between align-items-center py-3 px-3 mt-2 hover-bg-secondary"
+                                style={{ transition: 'background-color 0.2s', borderRadius: '8px' }}
+                            >
+                                <span className="text-light fw-medium">Model Settings</span>
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-secondary"><polyline points="9 18 15 12 9 6"></polyline></svg>
+                            </button>
+
                             <div className="mt-4 px-3 text-secondary" style={{ fontSize: '0.8rem' }}>
                                 Build version: 1.0.1
                             </div>
@@ -310,6 +422,50 @@ export default function SettingsDrawer({ isOpen, onClose }) {
                                         <button type="submit" className="btn btn-sm btn-outline-success" disabled={isGlobalLocked}>+</button>
                                     </form>
 
+                                    {/* Built-in Tools Group */}
+                                    <div className="mb-4">
+                                        <div className="text-secondary small fw-bold mb-2 border-bottom border-secondary pb-1">Mac MCP Tools</div>
+                                        {BUILTIN_TOOLS.map((tool) => {
+                                            const isIndividuallyLocked = lockedTools.includes(tool);
+                                            const effectiveLocked = isGlobalLocked || isIndividuallyLocked;
+                                            const isEnabled = permissions[tool] || false;
+                                            const displayName = TOOL_LABELS[tool] || formatToolName(tool);
+
+                                            return (
+                                                <div key={tool} className="d-flex justify-content-between align-items-center mb-2">
+                                                    <div className="d-flex align-items-center gap-2">
+                                                        <span className="text-light small" style={{ fontSize: '13px' }}>
+                                                            {displayName}
+                                                        </span>
+                                                        <button
+                                                            onClick={() => handleIndividualLock(tool)}
+                                                            className="btn btn-link p-0 text-secondary hover-text-white d-flex align-items-center"
+                                                            style={{ opacity: isGlobalLocked ? 0.3 : 0.6 }}
+                                                            disabled={isGlobalLocked}
+                                                        >
+                                                            {isIndividuallyLocked ? (
+                                                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+                                                            ) : (
+                                                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 9.9-1"></path></svg>
+                                                            )}
+                                                        </button>
+                                                    </div>
+                                                    <div className="form-check form-switch m-0">
+                                                        <input
+                                                            className="form-check-input"
+                                                            type="checkbox"
+                                                            checked={isEnabled}
+                                                            onChange={() => !effectiveLocked && handleToggle(tool)}
+                                                            disabled={effectiveLocked}
+                                                        />
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+
+                                    {/* Custom Rules Group */}
+                                    <div className="mb-2 text-secondary small fw-bold border-bottom border-secondary pb-1">Custom Rules</div>
                                     {Object.keys(permissions)
                                         .filter(tool => !BUILTIN_TOOLS.includes(tool))
                                         .map((tool) => {
@@ -391,6 +547,140 @@ export default function SettingsDrawer({ isOpen, onClose }) {
                                             );
                                         })}
                                 </>
+                            )}
+                        </div>
+                    </>
+                ) : activeMenu === 'llm' ? (
+                    <>
+                        {renderSidebarHeader('Model Settings', true)}
+                        
+                        <div className="px-3 pt-2 d-flex gap-2 border-bottom border-secondary">
+                            <button 
+                                onClick={() => setActiveTab('config')}
+                                className={`btn btn-sm flex-grow-1 py-2 rounded-0 border-0 ${activeTab === 'config' ? 'text-primary border-bottom border-primary active-tab-indicator' : 'text-secondary'}`}
+                                style={{ fontSize: '0.85rem', fontWeight: activeTab === 'config' ? 'bold' : 'normal' }}
+                            >
+                                Configuration
+                            </button>
+                            <button 
+                                onClick={() => setActiveTab('history')}
+                                className={`btn btn-sm flex-grow-1 py-2 rounded-0 border-0 ${activeTab === 'history' ? 'text-primary border-bottom border-primary active-tab-indicator' : 'text-secondary'}`}
+                                style={{ fontSize: '0.85rem', fontWeight: activeTab === 'history' ? 'bold' : 'normal' }}
+                            >
+                                History
+                            </button>
+                        </div>
+
+                        <div className="flex-grow-1 overflow-auto p-3">
+                            {loading ? (
+                                <div className="text-secondary text-center mt-4">Loading...</div>
+                            ) : activeTab === 'config' ? (
+                                <form onSubmit={handleSaveLLM}>
+                                    <div className="d-flex justify-content-between align-items-center mb-3">
+                                        <span className="text-secondary small fw-bold">Current Active Model:</span>
+                                        <span className="badge bg-primary-subtle text-primary border border-primary px-2 py-1" style={{ fontSize: '0.65rem' }}>
+                                            {llmSettings.model}
+                                        </span>
+                                    </div>
+                                    <div className="mb-3">
+                                        <label className="form-label text-secondary small fw-bold">Provider</label>
+                                        <select 
+                                            className="form-select form-select-sm bg-dark text-white border-secondary"
+                                            value={llmSettings.provider}
+                                            onChange={e => setLlmSettings({...llmSettings, provider: e.target.value})}
+                                        >
+                                            <option value="ollama">Ollama (Local)</option>
+                                            <option value="openai">OpenAI</option>
+                                            <option value="gemini">Gemini (Google)</option>
+                                            <option value="openai-compat">OpenAI-Compatible (Groq, etc.)</option>
+                                        </select>
+                                    </div>
+
+                                    <div className="mb-3">
+                                        <label className="form-label text-secondary small fw-bold">Base URL</label>
+                                        <input 
+                                            type="text" 
+                                            className="form-control form-control-sm bg-dark text-white border-secondary"
+                                            value={llmSettings.base_url}
+                                            onChange={e => setLlmSettings({...llmSettings, base_url: e.target.value})}
+                                            placeholder="e.g. http://localhost:11434"
+                                        />
+                                    </div>
+
+                                    <div className="mb-3">
+                                        <label className="form-label text-secondary small fw-bold">API Key</label>
+                                        <input 
+                                            type="password" 
+                                            className="form-control form-control-sm bg-dark text-white border-secondary"
+                                            value={llmSettings.api_key}
+                                            onChange={e => setLlmSettings({...llmSettings, api_key: e.target.value})}
+                                            placeholder="Not required for local"
+                                        />
+                                    </div>
+
+                                    <div className="mb-3">
+                                        <label className="form-label text-secondary small fw-bold">Model Name</label>
+                                        <input 
+                                            type="text" 
+                                            className="form-control form-control-sm bg-dark text-white border-secondary"
+                                            value={llmSettings.model}
+                                            onChange={e => setLlmSettings({...llmSettings, model: e.target.value})}
+                                            placeholder="e.g. llama3"
+                                        />
+                                    </div>
+
+                                    <button 
+                                        type="submit" 
+                                        className="btn btn-sm btn-primary w-100 mt-2"
+                                        disabled={saving}
+                                    >
+                                        {saving ? 'Saving...' : 'Save & Use'}
+                                    </button>
+                                </form>
+                            ) : (
+                                <div className="history-list">
+                                    {llmHistory.length === 0 ? (
+                                        <div className="text-secondary text-center mt-4 small">No saved configurations.</div>
+                                    ) : (
+                                        llmHistory.map(item => (
+                                            <div key={item.id} className={`p-3 mb-2 rounded border ${item.is_active ? 'border-primary bg-primary-subtle bg-opacity-10' : 'border-secondary bg-dark bg-opacity-50'}`}>
+                                                <div className="d-flex justify-content-between align-items-center mb-1">
+                                                    <span className="text-white small fw-bold">{item.provider.toUpperCase()}</span>
+                                                    <div className="d-flex align-items-center gap-2">
+                                                        <span className="text-secondary" style={{ fontSize: '0.6rem' }}>
+                                                            {new Date(item.created_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
+                                                        </span>
+                                                        {item.is_active && (
+                                                            <span className="badge bg-primary px-1 py-0" style={{ fontSize: '0.6rem' }}>ACTIVE</span>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                                <div className="text-secondary" style={{ fontSize: '0.75rem' }}>
+                                                    <div><strong>Model:</strong> {item.model}</div>
+                                                    <div className="text-truncate"><strong>URL:</strong> {item.base_url}</div>
+                                                </div>
+                                                <div className="d-flex gap-2 mt-2">
+                                                    {!item.is_active && (
+                                                        <button 
+                                                            onClick={() => handleActivateConfig(item.id)}
+                                                            className="btn btn-xs btn-primary py-0 px-2 small"
+                                                            style={{ fontSize: '0.7rem' }}
+                                                        >
+                                                            Use
+                                                        </button>
+                                                    )}
+                                                    <button 
+                                                        onClick={() => handleDeleteHistory(item.id)}
+                                                        className="btn btn-xs btn-outline-danger py-0 px-2 small"
+                                                        style={{ fontSize: '0.7rem' }}
+                                                    >
+                                                        Delete
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
                             )}
                         </div>
                     </>

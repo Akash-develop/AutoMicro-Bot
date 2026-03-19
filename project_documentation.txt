@@ -1,64 +1,119 @@
-# AutoMicro-Bot: Project Documentation
+# AutoMicro-Bot: Comprehensive Project Documentation
+===================================================
 
 ## 1. Project Overview
-AutoMicro-Bot is a premium, floating AI chatbot desktop application designed to provide a lightweight, always-on-top interface for AI assistance. It features a glassmorphism UI and integrates deeply with the local operating system to perform tasks via a Python-based backend.
+AutoMicro-Bot is a sophisticated floating AI chatbot desktop application. It features a modern, translucent "glassmorphism" UI that stays on top of other windows, providing a seamless AI assistant experience. The system is designed to be local-first, privacy-focused, and highly extensible via custom tools.
 
-## 2. Technical Stack
-### Frontend
-- **Framework**: React.js with Vite
-- **Desktop Wrapper**: Tauri (Rust-based)
-- **Styling**: Tailwind CSS & Vanilla CSS (for glassmorphism effects)
-- **Communication**: WebSockets for real-time streaming tokens and tool outputs.
+### Core Objectives:
+- Provide a persistent, non-intrusive AI assistant.
+- Leverage local LLMs (via Ollama) for privacy and speed.
+- Enable OS-level automation and interaction through natural language.
+- Maintain long-term assistant memory and conversation context.
 
-### Backend
-- **Core**: FastAPI (Python)
-- **AI Orchestration**: LangGraph & LangChain
-- **LLM Provider**: Ollama (local) or OpenAI-compatible APIs
-- **Database**: SQLite (via aiosqlite for chat history, and langgraph-checkpoint-sqlite for state persistence)
-- **Memory**: ChromaDB (for long-term vector-based memory)
+---
 
-## 3. Architecture & Logic Flow
+## 2. Technology Stack
 
-### 3.1 Communication Architecture
-The app uses a dual-protocol approach:
-1. **REST (HTTP)**: Used for stateless operations like fetching conversation history, renaming sessions, or loading settings.
-2. **WebSockets (WS)**: Used for the primary chat interface. This allows for:
-   - Token-by-token text streaming.
-   - Real-time "tool starting" notifications.
-   - Interactive tool output feedback within the chat bubble.
+### Frontend:
+- **Framework**: React.js with Vite.
+- **Desktop Wrapper**: Tauri (Rust-based).
+- **Styling**: Tailwind CSS & Vanilla CSS (Glassmorphism effects).
+- **State Management**: React Hooks (useState, useEffect, useMemo, useCallback).
+- **Communication**: WebSockets for real-time token streaming.
 
-### 3.2 Backend Implementation (`back-end/app`)
-- **`main.py`**: The entry point. Configures FastAPI, CORS, and includes routers for `chat` and `settings`.
-- **`routes/chat.py`**: Handles logic for the `/chat` POST endpoint and the `/ws/{session_id}` WebSocket. It manages file attachments (text and images) and pipes user input into the LangGraph app.
-- **`graph/agent.py`**: Defines the AI agent using `create_react_agent`.
-  - **Tools**: Includes terminal execution, web searching, file manipulation, and long-term memory access.
-  - **System Prompt**: Dynamically built based on user permissions and relevant memories retrieved from ChromaDB.
-- **`db/database.py`**: Manages the SQLite schema for chat history and conversation metadata.
-- **`db/chroma.py`**: Interfaces with ChromaDB for RAG (Retrieval-Augmented Generation) capabilities.
+### Backend:
+- **Language**: Python 3.11+.
+- **Web Framework**: FastAPI.
+- **Agent Framework**: LangGraph & LangChain.
+- **LLM Provider**: Ollama (default: llama3), with support for OpenAI and Gemini.
+- **Database**: SQLite (via aiosqlite for async operations).
+- **Vector Store**: ChromaDB (for Long-Term Memory).
 
-### 3.3 Frontend Implementation (`front-end/src`)
-- **`App.jsx`**: The main controller. Manages session state, view modes (mini, full, bubble), and window resizing logic via Tauri APIs.
-- **`api/chat.js`**: Low-level integration for fetch calls and WebSocket management.
-- **Components**:
-  - `ChatWindow.jsx`: Renders message bubbles with support for markdown and tool execution blocks.
-  - `InputBar.jsx`: A feature-rich input with file attachment capabilities and auto-resizing.
-  - `BubbleView.jsx`: A specialized "Dynamic Island" style view when the app is minimized.
-  - `SettingsDrawer.jsx`: Allows users to toggle tool permissions and system behaviors.
+---
 
-## 4. Key Features
-- **Floating UI**: Stays on top of other windows, can be minimized to a small interactive bubble.
-- **Tool-Calling AI**: Can execute terminal commands, browse the web, and manage local files.
-- **Persistent Context**: Uses LangGraph's checkpointer to maintain conversation state across sessions and ChromaDB for multi-conversation memory.
-- **Multi-modal Support**: Can accept and process image attachments in the chat.
+## 3. Architecture & Project Structure
+
+Root Directory: `AutoMicro-bot/`
+
+### 3.1 Back-End (`/back-end`)
+The backend is a Python-based FastAPI server that orchestrates the AI logic and tool execution.
+
+- `app/main.py`: The entry point for the FastAPI application. Sets up CORS, middleware, and includes routers.
+- `app/graph/agent.py`: The heart of the AI logic. Defines the LangGraph StateGraph, system prompts, LLM initialization (Ollama/OpenAI/Gemini), and tool binding.
+- `app/graph/tools/`: A collection of Python scripts defining tools the agent can use:
+    - `browser_actions.py`: Web browsing and searching.
+    - `desktop_actions.py`: macOS desktop interaction (clicking, typing, etc.).
+    - `file_actions.py`: Basic file and folder operations.
+    - `terminal_executor.py`: Running terminal commands safely.
+    - `excel_actions.py`: Generating and manipulating Excel files.
+    - `memory_actions.py`: Saving facts to long-term memory.
+    - `permission_manager.py`: Handles dynamic tool permissions (enabled/disabled via UI).
+- `app/db/`:
+    - `database.py`: SQLite schema handling via `aiosqlite`. Manages `messages`, `conversations`, and `llm_settings`.
+    - `chroma.py`: High-level interface for ChromaDB vector storage for Retrieval Augmented Generation (RAG) style memory.
+- `app/routes/`:
+    - `chat.py`: Handles POST requests for chat and the WebSocket (`/ws/{session_id}`) for streaming responses.
+    - `settings.py`: API for managing LLM configurations and tool permissions.
+
+### 3.2 Front-End (`/front-end`)
+The frontend is a React application served within a Tauri window.
+
+- `src/App.jsx`: The main application container. Manages view modes (Bubble, Mini, Normal), window resizing/positioning via Tauri APIs, and global state.
+- `src/components/`:
+    - `ChatWindow.jsx`: Displays message bubbles with support for streaming text and tool execution status.
+    - `InputBar.jsx`: Text input with support for file attachments.
+    - `TitleBar.jsx`: Custom window controls for Mac-like appearance and navigation.
+    - `BubbleView.jsx`: A minimal, circular view when the bot is minimized.
+    - `HistoryDrawer.jsx` & `SettingsDrawer.jsx`: Slidable panels for conversation history and configuration.
+- `src/api/`:
+    - `chat.js`: Client-side logic for WebSocket communication and history retrieval.
+- `src-tauri/`:
+    - `tauri.conf.json`: Configuration for window transparency, initial size, and system permissions.
+    - `src/main.rs`: Rust entry point for the Tauri application.
+
+---
+
+## 4. Key Features & Workflows
+
+### 4.1 Chat Strategy
+The assistant uses a "ReAct" (Reasoning + Acting) pattern via LangGraph. 
+1. The user sends a message.
+2. The agent analyzes the request against available tools.
+3. If a tool is needed, it calls the tool and waits for the result.
+4. The result is fed back into the model to generate the final response.
+5. All interaction is streamed to the UI in real-time.
+
+### 4.2 Persistent Memory
+- **Short-Term Memory**: Handled by LangGraph's checkpointer using SQLite (`stm.db`), preserving conversation context within a session.
+- **Long-Term Memory**: Facts saved via `save_long_term_memory` are stored in ChromaDB and retrieved based on vector similarity during future interactions to provide personalized context.
+
+### 4.3 Floating & Snapping UI
+The application leverages Tauri to maintain an "Always on Top" floating window. 
+- **Bubble Mode**: The app shrinks to a small interactive bubble that can be snapped to screen corners.
+- **Transparency**: Uses Blur/Glassmorphism effects for a premium native look.
+
+### 4.4 Dynamic Configuration
+Users can change the AI provider (Ollama, Gemini, OpenAI) and model names directly from the UI. These settings are persisted in SQLite and applied immediately to the agent session.
+
+---
 
 ## 5. Setup & Development
-1. **Backend**:
-   - Requires Python 3.11+ and Poetry.
-   - Run `poetry install` in `back-end`.
-   - Start with `poetry run start`.
-2. **Frontend**:
-   - Requires Node.js and Rust.
-   - Run `npm install` in `front-end`.
-   - Start with `npm run tauri dev`.
-3. **LLM**:
-   - Ensure Ollama is running for local inference, or configure `.env` for OpenAI.
+
+### Backend Setup:
+1. `cd back-end`
+2. `poetry install`
+3. `cp .env.example .env` (Configure with keys if using Cloud LLMs)
+4. `poetry run uvicorn app.main:app --port 8000`
+
+### Frontend Setup:
+1. `cd front-end`
+2. `npm install`
+3. `npm run tauri dev`
+
+### Production Build:
+- Use `npm run tauri build` to generate native installers (DMG for macOS, EXE for Windows).
+
+---
+
+## 6. Security and Permissions
+The bot includes a tool permission system. Certain high-risk actions (like terminal execution or file deletion) can be toggled on/off in the settings. The system prompt dynamically updates to reflect these constraints, ensuring the AI respects user-defined boundaries.

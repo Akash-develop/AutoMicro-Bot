@@ -68,3 +68,10 @@ class WSToken(BaseModel):
     """WebSocket outbound streaming token"""
     type: str  # "token" | "done" | "error"
     content: Optional[str] = None
+
+
+class LLMSettings(BaseModel):
+    provider: str
+    base_url: str
+    api_key: Optional[str] = ""
+    model: str

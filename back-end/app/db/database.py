@@ -26,14 +26,77 @@ async def init_db():
         """)
         await db.execute("CREATE INDEX IF NOT EXISTS idx_session ON messages(session_id)")
 
-        # Conversations table — stores title per session
+        # LLM Settings table (Current Active Configuration)
         await db.execute("""
-            CREATE TABLE IF NOT EXISTS conversations (
-                session_id TEXT PRIMARY KEY,
-                title TEXT NOT NULL,
+            CREATE TABLE IF NOT EXISTS llm_settings (
+                id INTEGER PRIMARY KEY DEFAULT 1,
+                provider TEXT NOT NULL,
+                base_url TEXT NOT NULL,
+                api_key TEXT,
+                model TEXT NOT NULL,
+                history_id INTEGER -- Optional link to history
+            )
+        """)
+        
+        # TABLE MIGRATION: Add history_id if missing from existing table
+        try:
+            async with db.execute("PRAGMA table_info(llm_settings)") as cursor:
+                columns = [row[1] for row in await cursor.fetchall()]
+                if "history_id" not in columns:
+                    await db.execute("ALTER TABLE llm_settings ADD COLUMN history_id INTEGER")
+        except Exception as e:
+            print(f"Migration error: {e}")
+
+        # LLM Settings History table
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS llm_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                provider TEXT NOT NULL,
+                base_url TEXT NOT NULL,
+                api_key TEXT,
+                model TEXT NOT NULL,
+                is_active BOOLEAN DEFAULT 0,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        
+        # Check if settings exist, if not seed from env
+        async with db.execute("SELECT COUNT(*) FROM llm_settings") as cursor:
+            row = await cursor.fetchone()
+            if row[0] == 0:
+                provider = os.getenv("LLM_PROVIDER", "ollama")
+                base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+                api_key = os.getenv("OLLAMA_API_KEY", "")
+                model = os.getenv("OLLAMA_MODEL", "llama3")
+                
+                # Insert into history first
+                cursor = await db.execute(
+                    "INSERT INTO llm_history (provider, base_url, api_key, model, is_active) VALUES (?, ?, ?, ?, 1)",
+                    (provider, base_url, api_key, model)
+                )
+                history_id = cursor.lastrowid
+                
+                # Insert into current settings
+                await db.execute(
+                    "INSERT INTO llm_settings (provider, base_url, api_key, model, history_id) VALUES (?, ?, ?, ?, ?)",
+                    (provider, base_url, api_key, model, history_id)
+                )
+        
+        # New Migration: If llm_history is empty but llm_settings exists, seed history
+        async with db.execute("SELECT COUNT(*) FROM llm_history") as cursor:
+            h_row = await cursor.fetchone()
+            if h_row[0] == 0:
+                async with db.execute("SELECT provider, base_url, api_key, model FROM llm_settings WHERE id = 1") as s_cursor:
+                    s_row = await s_cursor.fetchone()
+                    if s_row:
+                        provider, base_url, api_key, model = s_row
+                        cursor = await db.execute(
+                            "INSERT INTO llm_history (provider, base_url, api_key, model, is_active) VALUES (?, ?, ?, ?, 1)",
+                            (provider, base_url, api_key, model)
+                        )
+                        history_id = cursor.lastrowid
+                        await db.execute("UPDATE llm_settings SET history_id = ? WHERE id = 1", (history_id,))
+        
         await db.commit()
 
 
@@ -131,6 +194,7 @@ async def get_all_sessions():
     return await get_all_conversations()
 
 
+
 async def is_first_message(session_id: str) -> bool:
     """Check if this session has no messages yet (i.e. first message)."""
     async with aiosqlite.connect(DB_PATH) as db:
@@ -139,3 +203,97 @@ async def is_first_message(session_id: str) -> bool:
         ) as cursor:
             row = await cursor.fetchone()
             return row[0] == 0
+
+# ─── LLM Settings ─────────────────────────────────────────────────────────────
+
+async def get_llm_settings():
+    """Retrieve current LLM configuration."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT provider, base_url, api_key, model, history_id FROM llm_settings WHERE id = 1") as cursor:
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+
+async def update_llm_settings(settings: dict, db=None):
+    """Update global LLM configuration and sync with history."""
+    if db:
+        await _perform_llm_update(db, settings)
+    else:
+        async with aiosqlite.connect(DB_PATH, timeout=10) as new_db:
+            await _perform_llm_update(new_db, settings)
+            await new_db.commit()
+
+async def _perform_llm_update(db, settings: dict):
+    """Internal helper to execute the update query."""
+    await db.execute("""
+        UPDATE llm_settings 
+        SET provider = ?, base_url = ?, api_key = ?, model = ?, history_id = ?
+        WHERE id = 1
+    """, (
+        settings['provider'],
+        settings['base_url'],
+        settings['api_key'],
+        settings['model'],
+        settings.get('history_id')
+    ))
+
+async def get_llm_history():
+    """Retrieve all saved LLM configurations."""
+    async with aiosqlite.connect(DB_PATH, timeout=10) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT id, provider, base_url, api_key, model, is_active, created_at FROM llm_history ORDER BY created_at DESC") as cursor:
+            rows = await cursor.fetchall()
+            return [dict(row) for row in rows]
+
+async def save_llm_history(settings: dict):
+    """Save a new LLM configuration to history and set it as active."""
+    async with aiosqlite.connect(DB_PATH, timeout=10) as db:
+        # Deactivate previous active
+        await db.execute("UPDATE llm_history SET is_active = 0")
+        
+        # Insert new active
+        cursor = await db.execute("""
+            INSERT INTO llm_history (provider, base_url, api_key, model, is_active)
+            VALUES (?, ?, ?, ?, 1)
+        """, (
+            settings['provider'],
+            settings['base_url'],
+            settings['api_key'],
+            settings['model']
+        ))
+        row_id = cursor.lastrowid
+        
+        # Update current settings using the same connection
+        settings_with_id = settings.copy()
+        settings_with_id['history_id'] = row_id
+        await update_llm_settings(settings_with_id, db=db)
+        await db.commit()
+        return row_id
+
+async def delete_llm_history(history_id: int):
+    """Delete a configuration from history and clear its active link if necessary."""
+    async with aiosqlite.connect(DB_PATH, timeout=10) as db:
+        # If this was the active one, clear the history_id reference in llm_settings
+        await db.execute("UPDATE llm_settings SET history_id = NULL WHERE history_id = ?", (history_id,))
+        await db.execute("DELETE FROM llm_history WHERE id = ?", (history_id,))
+        await db.commit()
+
+async def activate_llm_config(history_id: int):
+    """Activate a configuration from history."""
+    async with aiosqlite.connect(DB_PATH, timeout=10) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT provider, base_url, api_key, model FROM llm_history WHERE id = ?", (history_id,)) as cursor:
+            row = await cursor.fetchone()
+            if row:
+                config = dict(row)
+                config['history_id'] = history_id
+                
+                # Update history activation status
+                await db.execute("UPDATE llm_history SET is_active = 0")
+                await db.execute("UPDATE llm_history SET is_active = 1 WHERE id = ?", (history_id,))
+                
+                # Sync current settings using the SAME connection
+                await update_llm_settings(config, db=db)
+                await db.commit()
+                return True
+    return False

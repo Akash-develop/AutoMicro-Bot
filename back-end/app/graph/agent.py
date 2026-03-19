@@ -5,12 +5,13 @@ from dotenv import load_dotenv
 
 from langchain_ollama import ChatOllama
 from langchain_openai import ChatOpenAI
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, ToolMessage
 from langgraph.graph import StateGraph, MessagesState, START
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.prebuilt import create_react_agent
 
-from app.db.database import save_message
+from app.db.database import save_message, get_llm_settings
 from app.graph.tools.permission_manager import load_permissions, BUILTIN_TOOLS
 
 # Tools
@@ -24,26 +25,16 @@ from app.db.chroma import search_memory
 
 load_dotenv()
 
-# ── Config ────────────────────────────────────────────────
-LLM_PROVIDER = os.getenv("LLM_PROVIDER", "ollama").lower()
-OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3")
-OLLAMA_API_KEY = os.getenv("OLLAMA_API_KEY", "no_key")
+# ── Global Agent State ───────────────────────────────────────────
+_agent_app = None
+_saver = None
+STM_DB_PATH = os.getenv("STM_DB_PATH", "stm.db")
+_checkpointer_ctx = AsyncSqliteSaver.from_conn_string(STM_DB_PATH)
 
-# ── LLM Setup ─────────────────────────────────────────────
-if LLM_PROVIDER == "openai" or LLM_PROVIDER == "openai-compat":
-    llm = ChatOpenAI(
-        model=OLLAMA_MODEL,
-        openai_api_base=OLLAMA_BASE_URL,
-        openai_api_key=OLLAMA_API_KEY,
-        temperature=0.7
-    )
-else:
-    llm = ChatOllama(
-        model=OLLAMA_MODEL,
-        base_url=OLLAMA_BASE_URL,
-        temperature=0.7
-    )
+def reset_agent():
+    """Global hook to clear the singleton and force re-init with new settings."""
+    global _agent_app
+    _agent_app = None
 
 # ── LangGraph Setup ───────────────────────────────────────
 
@@ -128,18 +119,47 @@ def build_system_prompt(state: MessagesState) -> list:
 
     return [SystemMessage(content=base_prompt)] + safe_messages
 
-# Global singleton for the app
-_agent_app = None
-STM_DB_PATH = os.getenv("STM_DB_PATH", "stm.db")
-_checkpointer_ctx = AsyncSqliteSaver.from_conn_string(STM_DB_PATH)
-_saver = None
-
 async def get_app():
     """Lazy initializer for the LangGraph app with Async checkpointer."""
     global _agent_app, _saver
     if _agent_app is None:
+        # Fetch dynamic settings from DB
+        conf = await get_llm_settings()
+        if not conf:
+            # Fallback if DB not ready (unlikely after init_db)
+            conf = {
+                "provider": "ollama",
+                "base_url": "http://localhost:11434",
+                "api_key": "",
+                "model": "llama3"
+            }
+
+        # Initialize LLM based on settings
+        provider = conf['provider'].lower()
+        if provider in ("openai", "openai-compat"):
+            llm = ChatOpenAI(
+                model=conf['model'],
+                openai_api_base=conf['base_url'],
+                openai_api_key=conf['api_key'],
+                temperature=0.7
+            )
+        elif provider == "gemini":
+            llm = ChatGoogleGenerativeAI(
+                model=conf['model'],
+                google_api_key=conf['api_key'],
+                temperature=0.7
+            )
+        else:
+            llm = ChatOllama(
+                model=conf['model'],
+                base_url=conf['base_url'],
+                temperature=0.7
+            )
+
         # AsyncSqliteSaver.from_conn_string returns an async context manager
-        _saver = await _checkpointer_ctx.__aenter__()
+        if _saver is None:
+            _saver = await _checkpointer_ctx.__aenter__()
+        
         _agent_app = create_react_agent(llm, tools=tools, checkpointer=_saver, state_modifier=build_system_prompt)
     return _agent_app
 

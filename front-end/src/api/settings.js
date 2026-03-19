@@ -50,3 +50,43 @@ export async function clearMemories() {
   if (!res.ok) throw new Error(`Failed to clear memories: ${res.status}`);
   return res.json();
 }
+
+export async function getLLMSettings() {
+  const res = await fetch(`${BASE_URL}/settings/llm`);
+  if (!res.ok) throw new Error(`Failed to load LLM settings: ${res.status}`);
+  return res.json();
+}
+
+export async function updateLLMSettings(settings) {
+  const res = await fetch(`${BASE_URL}/settings/llm`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(settings),
+  });
+  if (!res.ok) throw new Error(`Failed to update LLM settings: ${res.status}`);
+  return res.json();
+}
+
+export async function getLLMHistory() {
+  const res = await fetch(`${BASE_URL}/settings/llm/history`);
+  if (!res.ok) throw new Error(`Failed to load LLM history: ${res.status}`);
+  return res.json();
+}
+
+export async function activateLLMConfig(historyId) {
+  const res = await fetch(`${BASE_URL}/settings/llm/history/${historyId}/activate`, {
+    method: 'POST',
+  });
+  if (!res.ok) throw new Error(`Failed to activate LLM config: ${res.status}`);
+  return res.json();
+}
+
+export async function deleteLLMHistory(historyId) {
+  console.log(`API CALL: DELETE ${BASE_URL}/settings/llm/history/${historyId}`);
+  const res = await fetch(`${BASE_URL}/settings/llm/history/${historyId}`, {
+    method: 'DELETE',
+  });
+  console.log(`API RESPONSE STATUS: ${res.status}`);
+  if (!res.ok) throw new Error(`Failed to delete LLM history: ${res.status}`);
+  return res.json();
+}
