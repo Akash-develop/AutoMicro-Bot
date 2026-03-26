@@ -4,7 +4,7 @@
  */
 import { useState, useEffect, useRef } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import logo from '../assets/logo-recolored.png';
+import logo from '../assets/automicro_bot_icon_v5.png';
 
 export default function TitleBar({ onClearChat, onToggleHistory, onMinimize, onOpenSettings, onNormalMode, onFloatingMode, onOpenTerminal, viewMode }) {
     const appWindow = getCurrentWindow();

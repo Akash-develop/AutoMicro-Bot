@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect } from 'react';
-import logo from '../assets/logo-recolored.png';
+import logo from '../assets/automicro_bot_icon_v5.png';
 
 /**
  * src/components/BubbleView.jsx

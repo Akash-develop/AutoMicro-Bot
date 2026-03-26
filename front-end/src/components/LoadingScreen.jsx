@@ -1,5 +1,5 @@
 import React from 'react';
-import logo from '../assets/logo-recolored.png';
+import logo from '../assets/automicro_bot_icon_v5.png';
 
 const LoadingScreen = () => {
   // Generate a few random particles

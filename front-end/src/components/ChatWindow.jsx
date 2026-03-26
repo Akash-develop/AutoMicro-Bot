@@ -4,7 +4,7 @@
  */
 import { useEffect, useRef } from 'react';
 import MessageBubble from './MessageBubble.jsx';
-import logo from '../assets/logo-recolored.png';
+import logo from '../assets/automicro_bot_icon_v5.png';
 
 function TypingIndicator() {
     return (
