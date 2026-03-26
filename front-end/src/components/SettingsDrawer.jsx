@@ -3,14 +3,14 @@
  * Right-to-left drawer for managing agent tool permissions and memories.
  */
 import { useState, useEffect } from 'react';
-import { 
-    getPermissions, updatePermissions, deletePermission, 
-    getMemories, deleteMemory, clearMemories, 
+import {
+    getPermissions, updatePermissions, deletePermission,
+    getMemories, deleteMemory, clearMemories,
     getLLMSettings, updateLLMSettings, getLLMHistory, activateLLMConfig, deleteLLMHistory,
     getAvailableModels
 } from '../api/settings.js';
 
-export default function SettingsDrawer({ isOpen, onClose }) {
+export default function SettingsDrawer({ isOpen, onClose, theme, toggleTheme }) {
     const [activeMenu, setActiveMenu] = useState('main'); // 'main', 'permissions', 'memory'
     const [permissions, setPermissions] = useState({});
     const [lockedTools, setLockedTools] = useState([]);
@@ -138,7 +138,7 @@ export default function SettingsDrawer({ isOpen, onClose }) {
             }
 
             const baseUrl = llmSettings.base_url || (llmSettings.provider === 'ollama' ? "http://localhost:11434" : "");
-            
+
             if (!baseUrl && llmSettings.provider !== 'openai') {
                 setAvailableModels([]);
                 return;
@@ -327,7 +327,7 @@ export default function SettingsDrawer({ isOpen, onClose }) {
             console.log("Calling deleteLLMHistory API...");
             const res = await deleteLLMHistory(id);
             console.log("API returned success:", res);
-            
+
             setLlmHistory(prev => {
                 const updated = prev.filter(h => h.id != id);
                 console.log("Old history count:", prev.length, "New history count:", updated.length);
@@ -346,7 +346,7 @@ export default function SettingsDrawer({ isOpen, onClose }) {
 
     // Sub-renderers for cleaner code structure
     const renderSidebarHeader = (title, showBack = false) => (
-        <div className="p-3 border-bottom border-secondary d-flex justify-content-between align-items-center">
+        <div className="p-3 border-bottom d-flex justify-content-between align-items-center" style={{ borderColor: 'var(--glass-border)' }}>
             <div className="d-flex align-items-center gap-2">
                 {showBack && (
                     <button
@@ -357,7 +357,7 @@ export default function SettingsDrawer({ isOpen, onClose }) {
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
                     </button>
                 )}
-                <h6 className="m-0 text-white fw-bold d-flex align-items-center gap-2">
+                <h6 className="m-0 fw-bold d-flex align-items-center gap-2" style={{ color: 'var(--text-main)' }}>
                     {title}
                     {title === 'Tool Permissions' && (
                         <button
@@ -374,7 +374,7 @@ export default function SettingsDrawer({ isOpen, onClose }) {
                     )}
                 </h6>
             </div>
-            <button onClick={onClose} className="btn-close btn-close-white" style={{ fontSize: '0.8rem' }} />
+            <button onClick={onClose} className={`btn-close ${theme === 'dark' ? 'btn-close-white' : ''}`} style={{ fontSize: '0.8rem' }} />
         </div>
     );
 
@@ -395,8 +395,8 @@ export default function SettingsDrawer({ isOpen, onClose }) {
                 className="history-drawer"
                 style={{
                     position: 'absolute', top: 0, right: 0, width: '280px', height: '100%',
-                    background: 'rgba(30,30,40,0.95)', backdropFilter: 'blur(10px)',
-                    borderLeft: '1px solid rgba(255,255,255,0.1)',
+                    background: 'var(--drawer-bg)', backdropFilter: 'blur(10px)',
+                    borderLeft: '1px solid var(--glass-border)',
                     zIndex: 1050, transform: isOpen ? 'translateX(0)' : 'translateX(100%)',
                     transition: 'transform 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
                     display: 'flex', flexDirection: 'column'
@@ -408,33 +408,67 @@ export default function SettingsDrawer({ isOpen, onClose }) {
                         <div className="flex-grow-1 overflow-auto p-2">
                             <button
                                 onClick={() => setActiveMenu('permissions')}
-                                className="w-100 text-start btn btn-dark bg-transparent border-0 d-flex justify-content-between align-items-center py-3 px-3 hover-bg-secondary"
+                                className="w-100 text-start btn bg-transparent border-0 d-flex justify-content-between align-items-center py-3 px-3 hover-bg-secondary"
                                 style={{ transition: 'background-color 0.2s', borderRadius: '8px' }}
                             >
-                                <span className="text-light fw-medium">Tool Permissions</span>
+                                <span className="fw-medium" style={{ color: 'var(--text-main)' }}>Tool Permissions</span>
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-secondary"><polyline points="9 18 15 12 9 6"></polyline></svg>
                             </button>
 
                             <button
                                 onClick={() => setActiveMenu('memory')}
-                                className="w-100 text-start btn btn-dark bg-transparent border-0 d-flex justify-content-between align-items-center py-3 px-3 mt-2 hover-bg-secondary"
+                                className="w-100 text-start btn bg-transparent border-0 d-flex justify-content-between align-items-center py-3 px-3 mt-2 hover-bg-secondary"
                                 style={{ transition: 'background-color 0.2s', borderRadius: '8px' }}
                             >
-                                <span className="text-light fw-medium">LTM Storage</span>
+                                <span className="fw-medium" style={{ color: 'var(--text-main)' }}>LTM Storage</span>
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-secondary"><polyline points="9 18 15 12 9 6"></polyline></svg>
                             </button>
 
                             <button
                                 onClick={() => setActiveMenu('llm')}
-                                className="w-100 text-start btn btn-dark bg-transparent border-0 d-flex justify-content-between align-items-center py-3 px-3 mt-2 hover-bg-secondary"
+                                className="w-100 text-start btn bg-transparent border-0 d-flex justify-content-between align-items-center py-3 px-3 mt-2 hover-bg-secondary"
                                 style={{ transition: 'background-color 0.2s', borderRadius: '8px' }}
                             >
-                                <span className="text-light fw-medium">Model Settings</span>
+                                <span className="fw-medium" style={{ color: 'var(--text-main)' }}>Model Settings</span>
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-secondary"><polyline points="9 18 15 12 9 6"></polyline></svg>
                             </button>
 
-                            <div className="mt-4 px-3 text-secondary" style={{ fontSize: '0.8rem' }}>
-                                Build version: 1.0.1
+                            <button
+                                onClick={toggleTheme}
+                                className="w-100 text-start btn bg-transparent border-0 d-flex justify-content-between align-items-center py-3 px-3 mt-2 hover-bg-secondary"
+                                style={{ transition: 'background-color 0.2s', borderRadius: '8px' }}
+                            >
+                                <span className="fw-medium" style={{ color: 'var(--text-main)' }}>Appearance: {theme.charAt(0).toUpperCase() + theme.slice(1)}</span>
+                                {theme === 'dark' ? (
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-secondary">
+                                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+                                    </svg>
+                                ) : (
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-secondary">
+                                        <circle cx="12" cy="12" r="5"></circle>
+                                        <line x1="12" y1="1" x2="12" y2="3"></line>
+                                        <line x1="12" y1="21" x2="12" y2="23"></line>
+                                        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                                        <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                                        <line x1="1" y1="12" x2="3" y2="12"></line>
+                                        <line x1="21" y1="12" x2="23" y2="12"></line>
+                                        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+                                        <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+                                    </svg>
+                                )}
+                            </button>
+
+                            <button
+                                onClick={() => setActiveMenu('about')}
+                                className="w-100 text-start btn bg-transparent border-0 d-flex justify-content-between align-items-center py-3 px-3 mt-2 hover-bg-secondary"
+                                style={{ transition: 'background-color 0.2s', borderRadius: '8px' }}
+                            >
+                                <span className="fw-medium" style={{ color: 'var(--text-main)' }}>About AutoMicro-Bot</span>
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-secondary"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+                            </button>
+
+                            <div className="mt-4 px-3 text-secondary" style={{ fontSize: '0.7rem', opacity: 0.6 }}>
+                                v0.1.0-alpha • Build 2026.03.27
                             </div>
                         </div>
                     </>
@@ -451,7 +485,8 @@ export default function SettingsDrawer({ isOpen, onClose }) {
                                         <input
                                             type="text"
                                             name="newToolName"
-                                            className="form-control form-control-sm bg-dark text-white border-secondary"
+                                            className="form-control form-control-sm border-secondary"
+                                            style={{ background: 'var(--input-bg)', color: 'var(--text-main)' }}
                                             placeholder="Add custom rule..."
                                             disabled={isGlobalLocked}
                                         />
@@ -470,12 +505,12 @@ export default function SettingsDrawer({ isOpen, onClose }) {
                                             return (
                                                 <div key={tool} className="d-flex justify-content-between align-items-center mb-2">
                                                     <div className="d-flex align-items-center gap-2">
-                                                        <span className="text-light small" style={{ fontSize: '13px' }}>
+                                                        <span className="small" style={{ fontSize: '13px', color: 'var(--text-main)' }}>
                                                             {displayName}
                                                         </span>
                                                         <button
                                                             onClick={() => handleIndividualLock(tool)}
-                                                            className="btn btn-link p-0 text-secondary hover-text-white d-flex align-items-center"
+                                                            className="btn btn-link p-0 text-secondary hover-accent-color d-flex align-items-center"
                                                             style={{ opacity: isGlobalLocked ? 0.3 : 0.6 }}
                                                             disabled={isGlobalLocked}
                                                         >
@@ -516,7 +551,8 @@ export default function SettingsDrawer({ isOpen, onClose }) {
                                                             <input
                                                                 autoFocus
                                                                 type="text"
-                                                                className="form-control form-control-sm bg-dark text-white border-primary"
+                                                                className="form-control form-control-sm border-primary"
+                                                                style={{ background: 'var(--input-bg)', color: 'var(--text-main)' }}
                                                                 value={editValue}
                                                                 onChange={e => setEditValue(e.target.value)}
                                                                 onKeyDown={e => { if (e.key === 'Enter') handleSaveEdit(tool); if (e.key === 'Escape') setEditingTool(null); }}
@@ -527,12 +563,13 @@ export default function SettingsDrawer({ isOpen, onClose }) {
                                                         <>
                                                             <div className="d-flex align-items-center gap-2">
                                                                 <span
-                                                                    className={`text-light small text-break ${!effectiveLocked ? 'cursor-pointer' : ''}`}
+                                                                    className={`small text-break ${!effectiveLocked ? 'cursor-pointer' : ''}`}
                                                                     style={{
                                                                         fontSize: '13px',
                                                                         maxWidth: '140px',
                                                                         cursor: !effectiveLocked ? 'pointer' : 'default',
-                                                                        opacity: effectiveLocked ? 0.7 : 1
+                                                                        opacity: effectiveLocked ? 0.7 : 1,
+                                                                        color: 'var(--text-main)'
                                                                     }}
                                                                     onClick={() => { if (!effectiveLocked) startEdit(tool); }}
                                                                     title={effectiveLocked ? "Unlock to edit" : "Click to edit rule"}
@@ -542,7 +579,7 @@ export default function SettingsDrawer({ isOpen, onClose }) {
 
                                                                 <button
                                                                     onClick={() => handleIndividualLock(tool)}
-                                                                    className="btn btn-link p-0 ms-2 text-secondary hover-text-white d-flex align-items-center"
+                                                                    className="btn btn-link p-0 ms-2 text-secondary hover-accent-color d-flex align-items-center"
                                                                     title={isIndividuallyLocked ? "Unlock rule" : "Lock rule"}
                                                                     style={{ opacity: isGlobalLocked ? 0.3 : 1, pointerEvents: isGlobalLocked ? 'none' : 'auto' }}
                                                                 >
@@ -589,16 +626,16 @@ export default function SettingsDrawer({ isOpen, onClose }) {
                 ) : activeMenu === 'llm' ? (
                     <>
                         {renderSidebarHeader('Model Settings', true)}
-                        
+
                         <div className="px-3 pt-2 d-flex gap-2 border-bottom border-secondary">
-                            <button 
+                            <button
                                 onClick={() => setActiveTab('config')}
                                 className={`btn btn-sm flex-grow-1 py-2 rounded-0 border-0 ${activeTab === 'config' ? 'text-primary border-bottom border-primary active-tab-indicator' : 'text-secondary'}`}
                                 style={{ fontSize: '0.85rem', fontWeight: activeTab === 'config' ? 'bold' : 'normal' }}
                             >
                                 Configuration
                             </button>
-                            <button 
+                            <button
                                 onClick={() => setActiveTab('history')}
                                 className={`btn btn-sm flex-grow-1 py-2 rounded-0 border-0 ${activeTab === 'history' ? 'text-primary border-bottom border-primary active-tab-indicator' : 'text-secondary'}`}
                                 style={{ fontSize: '0.85rem', fontWeight: activeTab === 'history' ? 'bold' : 'normal' }}
@@ -620,22 +657,23 @@ export default function SettingsDrawer({ isOpen, onClose }) {
                                     </div>
                                     <div className="mb-3">
                                         <label className="form-label text-secondary small fw-bold">Provider</label>
-                                        <select 
-                                            className="form-select form-select-sm bg-dark text-white border-secondary"
+                                        <select
+                                            className="form-select form-select-sm border-secondary"
+                                            style={{ background: 'var(--input-bg)', color: 'var(--text-main)' }}
                                             value={llmSettings.provider}
                                             onChange={e => {
                                                 const newProvider = e.target.value;
                                                 const updates = { provider: newProvider };
-                                                
+
                                                 // Only reset if moving to/from Gemini
                                                 if (newProvider === 'gemini' || llmSettings.provider === 'gemini') {
                                                     updates.base_url = '';
                                                     updates.api_key = '';
                                                     updates.model = '';
                                                 }
-                                                
+
                                                 setLlmSettings({
-                                                    ...llmSettings, 
+                                                    ...llmSettings,
                                                     ...updates
                                                 });
                                             }}
@@ -652,26 +690,27 @@ export default function SettingsDrawer({ isOpen, onClose }) {
                                     {llmSettings.provider !== 'gemini' && (
                                         <div className="mb-3">
                                             <label className="form-label text-secondary small fw-bold">Base URL</label>
-                                            <input 
-                                                type="text" 
-                                                className="form-control form-control-sm bg-dark text-white border-secondary"
+                                            <input
+                                                type="text"
+                                                className="form-control form-control-sm border-secondary"
+                                                style={{ background: 'var(--input-bg)', color: 'var(--text-main)' }}
                                                 value={llmSettings.base_url}
                                                 onChange={e => {
-                                                    setLlmSettings({...llmSettings, base_url: e.target.value});
+                                                    setLlmSettings({ ...llmSettings, base_url: e.target.value });
                                                 }}
                                                 placeholder={
-                                                    llmSettings.provider === 'ollama' ? "http://localhost:11434" : 
-                                                    llmSettings.provider === 'openai-compat' ? "https://your-api-endpoint.com/v1" : 
-                                                    "https://your-api-endpoint.com/v1"
+                                                    llmSettings.provider === 'ollama' ? "http://localhost:11434" :
+                                                        llmSettings.provider === 'openai-compat' ? "https://your-api-endpoint.com/v1" :
+                                                            "https://your-api-endpoint.com/v1"
                                                 }
                                             />
                                             <div className="mt-1 text-secondary" style={{ fontSize: '0.65rem' }}>
-                                                {llmSettings.provider === 'ollama' ? "Default: http://localhost:11434" : 
-                                                 "Ensure your URL includes /v1 if required by the provider."}
+                                                {llmSettings.provider === 'ollama' ? "Default: http://localhost:11434" :
+                                                    "Ensure your URL includes /v1 if required by the provider."}
                                             </div>
                                             {llmSettings.base_url.includes('ollama.com') && (
                                                 <div className="mt-1 text-warning" style={{ fontSize: '0.65rem', fontWeight: 'bold' }}>
-                                                    ⚠️ Warning: ollama.com is a website, NOT an API host. 
+                                                    ⚠️ Warning: ollama.com is a website, NOT an API host.
                                                     Try your dedicated API endpoint.
                                                 </div>
                                             )}
@@ -680,11 +719,12 @@ export default function SettingsDrawer({ isOpen, onClose }) {
 
                                     <div className="mb-3">
                                         <label className="form-label text-secondary small fw-bold">API Key</label>
-                                        <input 
-                                            type="password" 
-                                            className="form-control form-control-sm bg-dark text-white border-secondary"
+                                        <input
+                                            type="password"
+                                            className="form-control form-control-sm border-secondary"
+                                            style={{ background: 'var(--input-bg)', color: 'var(--text-main)' }}
                                             value={llmSettings.api_key}
-                                            onChange={e => setLlmSettings({...llmSettings, api_key: e.target.value})}
+                                            onChange={e => setLlmSettings({ ...llmSettings, api_key: e.target.value })}
                                             placeholder={llmSettings.provider === 'ollama' ? "Not required for local" : "Enter your API Key"}
                                         />
                                     </div>
@@ -693,10 +733,11 @@ export default function SettingsDrawer({ isOpen, onClose }) {
                                         <label className="form-label text-secondary small fw-bold">Model Name</label>
                                         {(llmSettings.provider === 'ollama' || llmSettings.provider === 'ollama-cloud' || llmSettings.provider === 'openai-compat') && availableModels.length > 0 ? (
                                             <div className="position-relative">
-                                                <select 
-                                                    className="form-select form-select-sm bg-dark text-white border-secondary"
+                                                <select
+                                                    className="form-select form-select-sm border-secondary"
+                                                    style={{ background: 'var(--input-bg)', color: 'var(--text-main)' }}
                                                     value={llmSettings.model}
-                                                    onChange={e => setLlmSettings({...llmSettings, model: e.target.value})}
+                                                    onChange={e => setLlmSettings({ ...llmSettings, model: e.target.value })}
                                                 >
                                                     <option value="">Select a model...</option>
                                                     {availableModels.map(model => (
@@ -713,15 +754,16 @@ export default function SettingsDrawer({ isOpen, onClose }) {
                                             </div>
                                         ) : (
                                             <div className="position-relative">
-                                                <input 
-                                                    type="text" 
-                                                    className="form-control form-control-sm bg-dark text-white border-secondary"
+                                                <input
+                                                    type="text"
+                                                    className="form-control form-control-sm border-secondary"
+                                                    style={{ background: 'var(--input-bg)', color: 'var(--text-main)' }}
                                                     value={llmSettings.model}
-                                                    onChange={e => setLlmSettings({...llmSettings, model: e.target.value})}
+                                                    onChange={e => setLlmSettings({ ...llmSettings, model: e.target.value })}
                                                     placeholder={
-                                                        llmSettings.provider === 'gemini' ? "e.g. gemini-1.5-flash" : 
-                                                        llmSettings.provider === 'openai-compat' ? "e.g. moonshotai/Kimi-V1.5" :
-                                                        "e.g. llama3"
+                                                        llmSettings.provider === 'gemini' ? "e.g. gemini-1.5-flash" :
+                                                            llmSettings.provider === 'openai-compat' ? "e.g. moonshotai/Kimi-V1.5" :
+                                                                "e.g. llama3"
                                                     }
                                                 />
                                                 {(llmSettings.provider === 'ollama' || llmSettings.provider === 'ollama-cloud' || llmSettings.provider === 'openai-compat') && fetchingModels && (
@@ -732,15 +774,15 @@ export default function SettingsDrawer({ isOpen, onClose }) {
                                             </div>
                                         )}
                                         <div className="mt-1 text-info" style={{ fontSize: '0.65rem' }}>
-                                            {llmSettings.provider === 'ollama' || llmSettings.provider === 'ollama-cloud' || llmSettings.provider === 'openai-compat' ? 
+                                            {llmSettings.provider === 'ollama' || llmSettings.provider === 'ollama-cloud' || llmSettings.provider === 'openai-compat' ?
                                                 (availableModels.length > 0 ? `${availableModels.length} models discovered.` : (fetchingModels ? "Fetching models..." : "No models found or config incomplete.")) :
                                                 "Cloud models require a stable internet connection."
                                             }
                                         </div>
                                     </div>
 
-                                    <button 
-                                        type="submit" 
+                                    <button
+                                        type="submit"
                                         className="btn btn-sm btn-primary w-100 mt-2"
                                         disabled={saving}
                                     >
@@ -753,9 +795,9 @@ export default function SettingsDrawer({ isOpen, onClose }) {
                                         <div className="text-secondary text-center mt-4 small">No saved configurations.</div>
                                     ) : (
                                         llmHistory.map(item => (
-                                            <div key={item.id} className={`p-3 mb-2 rounded border ${item.is_active ? 'border-primary bg-primary-subtle bg-opacity-10' : 'border-secondary bg-dark bg-opacity-50'}`}>
+                                            <div key={item.id} className={`p-3 mb-2 rounded border ${item.is_active ? 'border-primary bg-primary-subtle bg-opacity-10' : 'border-secondary'}`} style={{ background: item.is_active ? '' : 'var(--input-bg)' }}>
                                                 <div className="d-flex justify-content-between align-items-center mb-1">
-                                                    <span className="text-white small fw-bold">{item.provider.toUpperCase()}</span>
+                                                    <span className="small fw-bold" style={{ color: 'var(--text-main)' }}>{item.provider.toUpperCase()}</span>
                                                     <div className="d-flex align-items-center gap-2">
                                                         <span className="text-secondary" style={{ fontSize: '0.6rem' }}>
                                                             {new Date(item.created_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
@@ -771,7 +813,7 @@ export default function SettingsDrawer({ isOpen, onClose }) {
                                                 </div>
                                                 <div className="d-flex gap-2 mt-2">
                                                     {!item.is_active && (
-                                                        <button 
+                                                        <button
                                                             onClick={() => handleActivateConfig(item.id)}
                                                             className="btn btn-xs btn-primary py-0 px-2 small"
                                                             style={{ fontSize: '0.7rem' }}
@@ -779,7 +821,7 @@ export default function SettingsDrawer({ isOpen, onClose }) {
                                                             Use
                                                         </button>
                                                     )}
-                                                    <button 
+                                                    <button
                                                         onClick={() => handleDeleteHistory(item.id)}
                                                         className="btn btn-xs btn-outline-danger py-0 px-2 small"
                                                         style={{ fontSize: '0.7rem' }}
@@ -794,17 +836,17 @@ export default function SettingsDrawer({ isOpen, onClose }) {
                             )}
                         </div>
                     </>
-                ) : (
+                ) : activeMenu === 'memory' ? (
                     <>
                         {renderSidebarHeader('LTM Storage', true)}
-                        
+
                         <div className="flex-grow-1 overflow-auto p-3">
                             {loading ? (
                                 <div className="text-secondary text-center mt-4">Loading...</div>
                             ) : (
                                 <>
                                     <div className="d-flex justify-content-end mb-3">
-                                        <button 
+                                        <button
                                             onClick={handleClearMemories}
                                             className="btn btn-sm btn-outline-danger"
                                             disabled={memories.length === 0}
@@ -817,7 +859,7 @@ export default function SettingsDrawer({ isOpen, onClose }) {
                                     ) : (
                                         memories.map(mem => (
                                             <div key={mem.id} className="d-flex justify-content-between align-items-start mb-3 border-bottom border-secondary pb-2">
-                                                <span className="text-light small text-break" style={{ fontSize: '13px', flex: 1, marginRight: '10px' }}>
+                                                <span className="small text-break" style={{ fontSize: '13px', flex: 1, marginRight: '10px', color: 'var(--text-main)' }}>
                                                     {mem.text}
                                                 </span>
                                                 <button
@@ -834,7 +876,55 @@ export default function SettingsDrawer({ isOpen, onClose }) {
                             )}
                         </div>
                     </>
-                )}
+                ) : activeMenu === 'about' ? (
+                    <>
+                        {renderSidebarHeader('About', true)}
+
+                        <div className="flex-grow-1 overflow-auto p-4 d-flex flex-column align-items-center animate-fade-in-up">
+                            <div className="mb-5 mt-4 text-center">
+                                <div className="logo-pulse-glow mb-4">
+                                    <div className="p-3 rounded-circle bg-primary bg-opacity-10 d-inline-block border border-primary border-opacity-25" style={{ background: 'radial-gradient(circle at center, var(--accent-glow) 0%, transparent 70%)' }}>
+                                        <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+                                            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path>
+                                        </svg>
+                                    </div>
+                                </div>
+                                <h3 className="fw-bold mb-1" style={{ color: 'var(--text-main)', letterSpacing: '1.5px', textShadow: '0 2px 10px rgba(0,0,0,0.3)' }}>AutoMicro-Bot</h3>
+                                <div className="text-secondary small fw-medium opacity-75" style={{ letterSpacing: '2px' }}>DESKTOP INTELLIGENCE</div>
+                            </div>
+
+                            <div className="about-card-premium w-100 mb-4">
+                                <div className="d-flex justify-content-between align-items-center mb-3">
+                                    <span className="text-secondary small fw-bold text-uppercase" style={{ letterSpacing: '0.5px' }}>Current Version</span>
+                                    <span className="badge bg-primary bg-opacity-10 text-primary border border-primary border-opacity-25 px-2 py-1" style={{ fontSize: '0.75rem' }}>0.1.0-alpha</span>
+                                </div>
+
+                                <div className="d-flex justify-content-between align-items-center">
+                                    <span className="text-secondary small fw-bold text-uppercase" style={{ letterSpacing: '0.5px' }}>App Status</span>
+                                    <div className="d-flex align-items-center">
+                                        <div className="status-dot-pulse"></div>
+                                        <span className="text-success small fw-bold">Up to date</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="w-100 d-flex gap-2">
+                                <a href="https://github.com/akash" target="_blank" rel="noopener noreferrer" className="btn flex-grow-1 py-2 d-flex align-items-center justify-content-center gap-2" style={{ background: 'var(--input-bg)', border: '1px solid var(--glass-border)', color: 'var(--text-main)', borderRadius: '12px', transition: 'all 0.2s' }}>
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path></svg>
+                                    <span className="small">GitHub</span>
+                                </a>
+                                <a href="https://automicro.ai" target="_blank" rel="noopener noreferrer" className="btn flex-grow-1 py-2 d-flex align-items-center justify-content-center gap-2" style={{ background: 'var(--input-bg)', border: '1px solid var(--glass-border)', color: 'var(--text-main)', borderRadius: '12px', transition: 'all 0.2s' }}>
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+                                    <span className="small">Website</span>
+                                </a>
+                            </div>
+
+                            <div className="mt-auto w-100 text-center text-secondary pt-4 border-top" style={{ borderColor: 'var(--glass-border)', fontSize: '10px', opacity: 0.5 }}>
+                                <p className="mb-0 text-uppercase" style={{ letterSpacing: '1px' }}>© 2026 AutoMicro Technologies</p>
+                            </div>
+                        </div>
+                    </>
+                ) : null}
             </div>
         </>
     );

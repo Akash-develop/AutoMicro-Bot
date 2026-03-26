@@ -36,6 +36,7 @@ export default function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [viewMode, setViewMode] = useState('mini'); // 'bubble' | 'mini' | 'full'
   const [isAppLoading, setIsAppLoading] = useState(true);
+  const [theme, setTheme] = useState(localStorage.getItem('automicro_theme') || 'dark');
   const activeStream = useRef(null);
 
   const appWindow = getCurrentWindow();
@@ -81,6 +82,16 @@ export default function App() {
       return () => clearTimeout(timer);
     }
   }, [isAppLoading]);
+
+  // Apply theme to document
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('automicro_theme', theme);
+  }, [theme]);
+
+  const toggleTheme = () => {
+    setTheme(prev => prev === 'dark' ? 'light' : 'dark');
+  };
 
   const handleMinimizeToBubble = async () => {
     setViewMode('bubble');
@@ -360,6 +371,8 @@ export default function App() {
           <SettingsDrawer
             isOpen={isSettingsOpen}
             onClose={() => setIsSettingsOpen(false)}
+            theme={theme}
+            toggleTheme={toggleTheme}
           />
         </div>
       </div>
@@ -405,6 +418,8 @@ export default function App() {
         <SettingsDrawer
           isOpen={isSettingsOpen}
           onClose={() => setIsSettingsOpen(false)}
+          theme={theme}
+          toggleTheme={toggleTheme}
         />
       </div>
     </div>

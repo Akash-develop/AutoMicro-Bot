@@ -57,7 +57,7 @@ export default function TitleBar({ onClearChat, onToggleHistory, onMinimize, onO
                 <div className="d-flex flex-column ms-2" data-tauri-drag-region>
                     <h1 className="m-0" style={{ fontSize: '18px', fontWeight: 'bold' }}>
                         <span style={{ color: '#00d2ff' }}>AutoMicro</span>
-                        <span className="text-white">-Bot</span>
+                        <span style={{ color: 'var(--text-main)' }}>-Bot</span>
                     </h1>
                     <div className="d-flex align-items-center gap-2 mt-1" data-tauri-drag-region>
                         <span className="rounded-circle" style={{ width: '6px', height: '6px', background: '#10b981', boxShadow: '0 0 8px #10b981' }} />
@@ -70,8 +70,8 @@ export default function TitleBar({ onClearChat, onToggleHistory, onMinimize, onO
                 {/* Three-dots menu button */}
                 <button
                     onClick={toggleMenu}
-                    className={`btn btn-link p-0 d-flex align-items-center justify-content-center transition-all ${isMenuOpen ? 'text-white opacity-100' : 'text-white opacity-50 hover-opacity-100'}`}
-                    style={{ width: '28px', height: '28px', background: isMenuOpen ? 'rgba(255,255,255,0.1)' : 'transparent', borderRadius: '50%' }}
+                    className={`btn btn-link p-0 d-flex align-items-center justify-content-center transition-all ${isMenuOpen ? 'opacity-100' : 'opacity-50'}`}
+                    style={{ width: '28px', height: '28px', background: isMenuOpen ? 'var(--glass-border)' : 'transparent', borderRadius: '50%', color: 'var(--text-main)' }}
                 >
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
                         <circle cx="12" cy="12" r="1" fill="currentColor" />
@@ -80,10 +80,10 @@ export default function TitleBar({ onClearChat, onToggleHistory, onMinimize, onO
                     </svg>
                 </button>
 
-                <button onClick={handleMinimize} className="btn btn-link p-0 text-white opacity-50 hover-opacity-100" style={{ width: '28px', height: '28px' }}>
+                <button onClick={handleMinimize} className="btn btn-link p-0 opacity-50 hover-opacity-100" style={{ width: '28px', height: '28px', color: 'var(--text-main)' }}>
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><line x1="5" y1="12" x2="19" y2="12" /></svg>
                 </button>
-                <button onClick={handleClose} className="btn btn-link p-0 text-white opacity-50 hover-opacity-100" style={{ width: '28px', height: '28px' }}>
+                <button onClick={handleClose} className="btn btn-link p-0 opacity-50 hover-opacity-100" style={{ width: '28px', height: '28px', color: 'var(--text-main)' }}>
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
                 </button>
             </div>

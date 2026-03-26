@@ -190,10 +190,10 @@ export default function HistoryDrawer({ isOpen, onClose, onSelectSession, onNewC
                 {/* Header */}
                 <div className="drawer-header">
                     <div className="d-flex align-items-center gap-2">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
                         </svg>
-                        <h5 className="m-0 text-white" style={{ fontSize: '14px', fontWeight: '600' }}>Conversations</h5>
+                        <h5 className="m-0" style={{ fontSize: '14px', fontWeight: '600', color: 'var(--text-main)' }}>Conversations</h5>
                     </div>
                     <button className="drawer-close-btn" onClick={onClose}>
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
@@ -214,11 +214,11 @@ export default function HistoryDrawer({ isOpen, onClose, onSelectSession, onNewC
                 <div className="drawer-body">
                     {loading ? (
                         <div className="d-flex justify-content-center p-4">
-                            <div className="spinner-border spinner-border-sm" style={{ color: 'rgba(99,102,241,0.7)' }} role="status" />
+                            <div className="spinner-border spinner-border-sm" style={{ color: 'var(--accent)', opacity: 0.7 }} role="status" />
                         </div>
                     ) : sessions.length === 0 ? (
                         <div className="convo-empty">
-                            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.2)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--glass-border)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                                 <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
                             </svg>
                             <span>No conversations yet</span>

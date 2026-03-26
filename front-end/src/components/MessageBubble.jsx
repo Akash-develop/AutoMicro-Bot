@@ -37,13 +37,13 @@ function ToolIndicator({ commandObj }) {
             className="d-flex align-items-center gap-2 mb-2 px-3 py-2 rounded-pill border border-secondary" 
             style={{ 
                 fontSize: '11px', 
-                background: 'rgba(30,30,40,0.7)',
+                background: 'var(--bot-bubble)',
                 backdropFilter: 'blur(5px)',
                 transition: 'opacity 0.3s ease, transform 0.3s ease',
                 opacity: fadingOut ? 0 : 1,
                 transform: fadingOut ? 'translateY(-5px)' : 'translateY(0)',
                 width: 'max-content',
-                borderColor: isStopped ? 'rgba(239, 68, 68, 0.3)' : (isExecuting ? 'rgba(255,255,255,0.1)' : 'rgba(34, 197, 94, 0.3)')
+                borderColor: isStopped ? 'rgba(239, 68, 68, 0.3)' : (isExecuting ? 'var(--glass-border)' : 'rgba(34, 197, 94, 0.3)')
             }}
         >
             {isExecuting ? (
@@ -53,7 +53,7 @@ function ToolIndicator({ commandObj }) {
             ) : (
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
             )}
-            <span className="text-light opacity-75 fw-medium">
+            <span className="fw-medium" style={{ color: 'var(--text-secondary)' }}>
                 {isExecuting ? 'Executing' : (isStopped ? 'Aborted' : 'Completed')}: <span className="text-info font-monospace">{commandObj.command}</span>
             </span>
         </div>
@@ -98,7 +98,7 @@ export default function MessageBubble({ role, content, attachment, commands, tim
                     </div>
                 )}
                 {attachment && attachment.mime_type && attachment.mime_type.startsWith('image/') && (
-                    <div className="mb-2 overflow-hidden rounded-lg border border-white/10" style={{ maxWidth: '300px' }}>
+                    <div className="mb-2 overflow-hidden rounded-lg border" style={{ maxWidth: '300px', borderColor: 'var(--glass-border)' }}>
                         <img 
                             src={attachment.content} 
                             alt="attachment" 

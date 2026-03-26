@@ -12,7 +12,7 @@ function TypingIndicator() {
             <div className="glow-orb" />
             <div className="glow-orb" />
             <div className="glow-orb" />
-            <span className="text-white opacity-40 ms-2" style={{ fontSize: '11px', fontWeight: '500', letterSpacing: '0.02em' }}>Thinking</span>
+            <span style={{ fontSize: '11px', fontWeight: '500', letterSpacing: '0.02em', color: 'var(--text-secondary)' }}>Thinking</span>
         </div>
     );
 }
@@ -32,9 +32,9 @@ function WelcomeMessage() {
                 </div>
             </div>
             <h2 className="m-0" style={{ fontSize: '28px', fontWeight: 'bold', letterSpacing: '-0.02em' }}>
-                <span style={{ color: '#00d2ff' }}>AutoMicro</span><span className="text-white">-Bot</span>
+                <span style={{ color: '#00d2ff' }}>AutoMicro</span><span style={{ color: 'var(--text-main)' }}>-Bot</span>
             </h2>
-            <div className="text-white text-center mt-2 opacity-50" style={{ fontSize: '15px', lineHeight: '1.6' }}>
+            <div className="text-center mt-2" style={{ fontSize: '15px', lineHeight: '1.6', color: 'var(--text-secondary)' }}>
                 Your local AI assistant is ready.<br />
                 How can I help you today?
             </div>
