@@ -24,7 +24,6 @@ from app.graph.tools.system_actions import sleep_system
 from app.graph.tools.file_actions import create_folder, create_file
 from app.graph.tools.excel_actions import create_excel_with_sample_data
 from app.graph.tools.memory_actions import save_long_term_memory
-from app.graph.tools.desktop_actions import mouse_click, mouse_move, type_text, key_press, take_screenshot, get_screen_size
 from app.db.chroma import search_memory
 
 load_dotenv()
@@ -64,13 +63,7 @@ tools = [
     create_folder,
     create_file,
     create_excel_with_sample_data,
-    save_long_term_memory,
-    mouse_click,
-    mouse_move,
-    type_text,
-    key_press,
-    take_screenshot,
-    get_screen_size
+    save_long_term_memory
 ]
 
 def build_system_prompt(state: MessagesState) -> list:
@@ -85,12 +78,6 @@ def build_system_prompt(state: MessagesState) -> list:
         "CRITICAL TOOL INSTRUCTION:\n"
         "- You may write a short, conversational response before using a tool IF it helps the user understand what you are doing, but it is NOT mandatory if the task is obvious.\n"
         "- If the user asks for multiple actions (e.g., 'create a folder and a file inside it'), you MUST execute the first tool, wait for the result, and then execute the second tool in the same response chain until all tasks are complete.\n"
-        "DESKTOP AUTOMATION INSTRUCTIONS:\n"
-        "- NEVER describe a desktop action (like clicking or typing) without actually calling the corresponding tool.\n"
-        "- You MUST follow the ReAct pattern: First, think about what you need to do. Second, CALL the appropriate tool. Third, wait for the tool output before continuing.\n"
-        "- Use `get_screen_size` before complex mouse actions to understand the resolution.\n"
-        "- Use `take_screenshot` to see the current state of the screen if you are unsure where to click.\n"
-        "- When typing, specify reasonable intervals to mimic human input.\n"
         "INTERRUPTION HANDLING:\n"
         "- If you are interrupted or the user stops you, do NOT try to explain or 'fix' the situation with more tools or long messages. Simply wait for the next user request."
     )
@@ -104,12 +91,15 @@ def build_system_prompt(state: MessagesState) -> list:
     for key, enabled in perms.items():
         if key == "_locked_tools":
             continue
-        
-        rule_text = key.replace('_', ' ')
-        if enabled:
-            custom_rules_enabled.append(rule_text)
-        else:
-            custom_rules_disabled.append(rule_text)
+        if key not in BUILTIN_TOOLS:
+            rule_text = key.replace('_', ' ')
+            # Standard logic:
+            # If switch is ON (enabled), the action is ALLOWED.
+            # If switch is OFF (disabled), the action is FORBIDDEN.
+            if enabled:
+                custom_rules_enabled.append(rule_text)
+            else:
+                custom_rules_disabled.append(rule_text)
     
     if custom_rules_enabled or custom_rules_disabled:
         base_prompt += "\n\nCRITICAL USER INSTRUCTIONS / CUSTOM RULES:\n"

@@ -65,7 +65,6 @@ export default function ChatWindow({ messages, isTyping, newMsgId }) {
                             key={msg.id}
                             role={msg.role}
                             content={msg.content}
-                            attachment={msg.attachment}
                             commands={msg.commands}
                             timestamp={msg.timestamp}
                             isNew={msg.id === newMsgId}

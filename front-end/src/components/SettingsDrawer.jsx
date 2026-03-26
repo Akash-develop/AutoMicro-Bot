@@ -55,25 +55,34 @@ export default function SettingsDrawer({ isOpen, onClose }) {
         "create_folder",
         "create_file",
         "create_excel_with_sample_data",
-        "save_long_term_memory",
+        "get_desktop_state",
+        "control_app",
         "mouse_click",
-        "mouse_move",
-        "type_text",
-        "key_press",
-        "take_screenshot",
-        "get_screen_size"
+        "keyboard_type",
+        "move_mouse",
+        "scroll_mouse",
+        "drag_mouse",
+        "press_keys",
+        "scrape_web",
+        "wait"
     ];
 
     const TOOL_LABELS = {
         "search_web": "Internet Search",
         "execute_terminal_command": "System Terminal",
+        "get_desktop_state": "Desktop State",
+        "control_app": "App Control",
         "mouse_click": "Mouse Click",
-        "mouse_move": "Move Mouse",
-        "type_text": "Type Text",
-        "key_press": "Press Keys",
-        "take_screenshot": "Take Screenshot",
-        "get_screen_size": "Screen Info",
-        "save_long_term_memory": "Memory Storage"
+        "keyboard_type": "Keyboard Type",
+        "move_mouse": "Move Mouse",
+        "scroll_mouse": "Scroll Mouse",
+        "drag_mouse": "Drag Mouse",
+        "press_keys": "Press Keys",
+        "scrape_web": "Scrape Web",
+        "wait": "Wait",
+        "get_active_tab_details": "Active Tab Info",
+        "get_tab_content": "Read Page Text",
+        "run_browser_js": "Run Browser JS"
     };
 
     useEffect(() => {
@@ -492,17 +501,6 @@ export default function SettingsDrawer({ isOpen, onClose }) {
                                                 </div>
                                             );
                                         })}
-                                        
-                                        <div className="mt-4 p-2 rounded bg-dark border border-warning" style={{ fontSize: '0.65rem' }}>
-                                            <div className="text-warning fw-bold mb-1">⚠️ System Permissions Required</div>
-                                            <div className="text-secondary">
-                                                To use Desktop Control, your OS may require permissions:
-                                                <ul className="ps-3 mt-1 mb-0">
-                                                    <li><strong>macOS</strong>: Settings &gt; Privacy &gt; Accessibility &gt; Enable AutoMicro-Bot</li>
-                                                    <li><strong>Windows</strong>: Settings &gt; Privacy &gt; enable screen control</li>
-                                                </ul>
-                                            </div>
-                                        </div>
                                     </div>
 
                                     {/* Custom Rules Group */}

@@ -91,9 +91,7 @@ function ConversationItem({ session, isActive, onSelect, onRenamed, onDeleted })
                     onClick={e => e.stopPropagation()}
                 />
             ) : (
-                <span className="convo-title">
-                    {session.title || (session.last_message ? session.last_message : (session.last_attachment ? '[Image]' : 'New Chat'))}
-                </span>
+                <span className="convo-title">{session.title || session.last_message || 'New Chat'}</span>
             )}
 
             {hovering && !renaming && (

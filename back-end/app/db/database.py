@@ -5,7 +5,6 @@ Persistent SQLite storage for chat history using aiosqlite.
 import os
 import aiosqlite
 from datetime import datetime
-import json
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -22,7 +21,6 @@ async def init_db():
                 session_id TEXT NOT NULL,
                 role TEXT NOT NULL,
                 content TEXT NOT NULL,
-                attachment TEXT,
                 timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
             )
         """)
@@ -58,16 +56,7 @@ async def init_db():
                 if "history_id" not in columns:
                     await db.execute("ALTER TABLE llm_settings ADD COLUMN history_id INTEGER")
         except Exception as e:
-            print(f"Migration error (llm_settings): {e}")
-
-        # TABLE MIGRATION: Add attachment if missing from messages table
-        try:
-            async with db.execute("PRAGMA table_info(messages)") as cursor:
-                columns = [row[1] for row in await cursor.fetchall()]
-                if "attachment" not in columns:
-                    await db.execute("ALTER TABLE messages ADD COLUMN attachment TEXT")
-        except Exception as e:
-            print(f"Migration error (messages): {e}")
+            print(f"Migration error: {e}")
 
         # LLM Settings History table
         await db.execute("""
@@ -163,15 +152,13 @@ async def get_all_conversations():
                 c.created_at,
                 COALESCE(m.last_ts, c.created_at) AS last_active,
                 COALESCE(m.last_message, '') AS last_message,
-                COALESCE(m.last_role, '') AS role,
-                m.last_attachment
+                COALESCE(m.last_role, '') AS role
             FROM conversations c
             LEFT JOIN (
                 SELECT
                     session_id,
                     content AS last_message,
                     role AS last_role,
-                    attachment AS last_attachment,
                     MAX(timestamp) AS last_ts
                 FROM messages
                 GROUP BY session_id
@@ -184,14 +171,12 @@ async def get_all_conversations():
 
 # ─── Messages ─────────────────────────────────────────────────────────────────
 
-async def save_message(session_id: str, role: str, content: str, attachment: dict = None):
+async def save_message(session_id: str, role: str, content: str):
     """Save a single message to history."""
-    attachment_json = json.dumps(attachment) if attachment else None
-    
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
-            "INSERT INTO messages (session_id, role, content, attachment) VALUES (?, ?, ?, ?)",
-            (session_id, role, content, attachment_json)
+            "INSERT INTO messages (session_id, role, content) VALUES (?, ?, ?)",
+            (session_id, role, content)
         )
         await db.commit()
 
@@ -201,20 +186,11 @@ async def get_history(session_id: str, limit: int = 50):
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
-            "SELECT id, session_id, role, content, attachment, timestamp FROM messages WHERE session_id = ? ORDER BY timestamp ASC LIMIT ?",
+            "SELECT id, session_id, role, content, timestamp FROM messages WHERE session_id = ? ORDER BY timestamp ASC LIMIT ?",
             (session_id, limit)
         ) as cursor:
             rows = await cursor.fetchall()
-            messages = []
-            for row in rows:
-                msg = dict(row)
-                if msg.get("attachment"):
-                    try:
-                        msg["attachment"] = json.loads(msg["attachment"])
-                    except:
-                        msg["attachment"] = None
-                messages.append(msg)
-            return messages
+            return [dict(row) for row in rows]
 
 
 async def clear_history(session_id: str):

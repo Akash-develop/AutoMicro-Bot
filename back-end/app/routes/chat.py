@@ -198,10 +198,10 @@ async def websocket_chat(websocket: WebSocket, session_id: str):
                 message_content = user_message
 
             input_messages = {"messages": [HumanMessage(content=message_content)]}
-            await save_message(session_id, "user", user_message, attachment=attachment if image_content else None)
+            await save_message(session_id, "user", user_message)
 
             # --- Streaming Loop ---
-            full_response_parts: list[str] = []
+            full_response: str = ""
             max_retries = 2
             
             for attempt in range(max_retries):
@@ -222,7 +222,7 @@ async def websocket_chat(websocket: WebSocket, session_id: str):
 
                         # 1. Handle Text Tokens
                         if chunk_type in ("AIMessageChunk", "AIMessage") and isinstance(content, str) and content:
-                            full_response_parts.append(content)
+                            full_response += content
                             await websocket.send_text(json.dumps({
                                 "type": "token",
                                 "content": content
@@ -270,7 +270,6 @@ async def websocket_chat(websocket: WebSocket, session_id: str):
                         break
 
             # --- Post-Stream Completion ---
-            full_response = "".join(full_response_parts)
             await save_message(session_id, "assistant", full_response.strip())
             await websocket.send_text(json.dumps({"type": "done"}))
 
