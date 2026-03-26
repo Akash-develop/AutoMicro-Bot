@@ -25,6 +25,7 @@ BUILTIN_TOOLS = {
     "type_text": False,
     "key_press": False,
     "take_screenshot": False,
+    "get_screen_size": True,
 }
 
 # In-memory cache for permissions

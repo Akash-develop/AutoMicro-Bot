@@ -94,6 +94,7 @@ def take_screenshot():
         return f"Error taking screenshot: {str(e)}"
 
 @tool
+@check_permission("get_screen_size")
 def get_screen_size():
     """
     Returns the current screen resolution (width and height).

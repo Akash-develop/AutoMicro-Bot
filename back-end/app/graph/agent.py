@@ -86,6 +86,8 @@ def build_system_prompt(state: MessagesState) -> list:
         "- You may write a short, conversational response before using a tool IF it helps the user understand what you are doing, but it is NOT mandatory if the task is obvious.\n"
         "- If the user asks for multiple actions (e.g., 'create a folder and a file inside it'), you MUST execute the first tool, wait for the result, and then execute the second tool in the same response chain until all tasks are complete.\n"
         "DESKTOP AUTOMATION INSTRUCTIONS:\n"
+        "- NEVER describe a desktop action (like clicking or typing) without actually calling the corresponding tool.\n"
+        "- You MUST follow the ReAct pattern: First, think about what you need to do. Second, CALL the appropriate tool. Third, wait for the tool output before continuing.\n"
         "- Use `get_screen_size` before complex mouse actions to understand the resolution.\n"
         "- Use `take_screenshot` to see the current state of the screen if you are unsure where to click.\n"
         "- When typing, specify reasonable intervals to mimic human input.\n"
@@ -102,15 +104,12 @@ def build_system_prompt(state: MessagesState) -> list:
     for key, enabled in perms.items():
         if key == "_locked_tools":
             continue
-        if key not in BUILTIN_TOOLS:
-            rule_text = key.replace('_', ' ')
-            # Standard logic:
-            # If switch is ON (enabled), the action is ALLOWED.
-            # If switch is OFF (disabled), the action is FORBIDDEN.
-            if enabled:
-                custom_rules_enabled.append(rule_text)
-            else:
-                custom_rules_disabled.append(rule_text)
+        
+        rule_text = key.replace('_', ' ')
+        if enabled:
+            custom_rules_enabled.append(rule_text)
+        else:
+            custom_rules_disabled.append(rule_text)
     
     if custom_rules_enabled or custom_rules_disabled:
         base_prompt += "\n\nCRITICAL USER INSTRUCTIONS / CUSTOM RULES:\n"
