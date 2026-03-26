@@ -198,10 +198,10 @@ async def websocket_chat(websocket: WebSocket, session_id: str):
                 message_content = user_message
 
             input_messages = {"messages": [HumanMessage(content=message_content)]}
-            await save_message(session_id, "user", user_message)
+            await save_message(session_id, "user", user_message, attachment=attachment if image_content else None)
 
             # --- Streaming Loop ---
-            full_response = ""
+            full_response_parts: list[str] = []
             max_retries = 2
             
             for attempt in range(max_retries):
@@ -222,7 +222,7 @@ async def websocket_chat(websocket: WebSocket, session_id: str):
 
                         # 1. Handle Text Tokens
                         if chunk_type in ("AIMessageChunk", "AIMessage") and isinstance(content, str) and content:
-                            full_response += content
+                            full_response_parts.append(content)
                             await websocket.send_text(json.dumps({
                                 "type": "token",
                                 "content": content
@@ -255,10 +255,22 @@ async def websocket_chat(websocket: WebSocket, session_id: str):
                         continue
                     else:
                         logger.error(f"Stream interrupted: {error_msg}")
-                        await websocket.send_text(json.dumps({"type": "error", "content": error_msg}))
+                        
+                        # Custom suggestion for 401 unauthorized
+                        if "unauthorized" in error_msg.lower() or "401" in error_msg:
+                            suggestion = (
+                                "\n\n**Note:** This 'unauthorized' error often happens if your Base URL is wrong. "
+                                "If you are using SiliconFlow, ensure your provider is 'OpenAI-Compatible' and "
+                                "the URL is `https://api.siliconflow.cn/v1`. "
+                                "Do NOT use `https://ollama.com` as an API URL."
+                            )
+                            await websocket.send_text(json.dumps({"type": "error", "content": error_msg + suggestion}))
+                        else:
+                            await websocket.send_text(json.dumps({"type": "error", "content": error_msg}))
                         break
 
             # --- Post-Stream Completion ---
+            full_response = "".join(full_response_parts)
             await save_message(session_id, "assistant", full_response.strip())
             await websocket.send_text(json.dumps({"type": "done"}))
 

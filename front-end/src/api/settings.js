@@ -90,3 +90,9 @@ export async function deleteLLMHistory(historyId) {
   if (!res.ok) throw new Error(`Failed to delete LLM history: ${res.status}`);
   return res.json();
 }
+
+export async function getAvailableModels(provider, baseUrl, apiKey = "") {
+  const res = await fetch(`${BASE_URL}/settings/llm/models?provider=${provider}&base_url=${encodeURIComponent(baseUrl)}&api_key=${encodeURIComponent(apiKey)}`);
+  if (!res.ok) throw new Error(`Failed to fetch models: ${res.status}`);
+  return res.json();
+}

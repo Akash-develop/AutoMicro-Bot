@@ -1,4 +1,5 @@
 from fastapi import APIRouter
+from typing import Optional
 from app.graph.tools.permission_manager import load_permissions, save_permissions
 from app.db.chroma import get_all_memories, delete_memory, clear_all_memories
 from app.db.database import (
@@ -7,6 +8,10 @@ from app.db.database import (
 )
 from app.models.schemas import LLMSettings, ChatRequest
 from pydantic import BaseModel
+import httpx
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -57,6 +62,7 @@ async def delete_memory_endpoint(memory_id: str):
 @router.delete("/memory")
 async def clear_all_memories_endpoint():
     """Clear all long-term memories."""
+    print("DEBUG: DELETE /settings/memory REQUEST RECEIVED")
     success = clear_all_memories()
     if success:
         return {"status": "success", "message": "All memories cleared"}
@@ -102,3 +108,43 @@ async def delete_llm_history_endpoint(history_id: int):
     print(f"DEBUG: DELETE REQUEST RECEIVED FOR HISTORY ID: {history_id}")
     await delete_llm_history(history_id)
     return {"status": "success"}
+
+@router.get("/llm/models")
+async def get_available_models_endpoint(provider: str, base_url: str, api_key: Optional[str] = None):
+    """Fetch available models from Ollama or OpenAI-compatible providers."""
+    # ensure base_url is correct
+    if not base_url:
+        if provider in ("ollama", "ollama-cloud"):
+            base_url = "http://localhost:11434"
+        elif provider == "openai-compat":
+            return {"models": []} # Need a URL for compat
+        else:
+            return {"models": []}
+    
+    # remove trailing slash
+    base_url = base_url.rstrip("/")
+    
+    try:
+        async with httpx.AsyncClient() as client:
+            if provider in ("ollama", "ollama-cloud"):
+                resp = await client.get(f"{base_url}/api/tags", timeout=5.0)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    models = [m["name"] for m in data.get("models", [])]
+                    return {"models": models}
+            elif provider == "openai-compat":
+                headers = {}
+                if api_key:
+                    headers["Authorization"] = f"Bearer {api_key}"
+                resp = await client.get(f"{base_url}/models", headers=headers, timeout=5.0)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    # OpenAI /models returns [{"id": "model-name", ...}, ...]
+                    models = [m["id"] for m in data.get("data", [])]
+                    return {"models": models}
+            
+            logger.warning(f"Failed to fetch models: {resp.status_code}")
+            return {"models": []}
+    except Exception as e:
+        logger.error(f"Error fetching models for {provider}: {e}")
+        return {"models": []}

@@ -20,6 +20,11 @@ BUILTIN_TOOLS = {
     "create_file": True,
     "create_excel_with_sample_data": True,
     "save_long_term_memory": True,
+    "mouse_click": False,
+    "mouse_move": False,
+    "type_text": False,
+    "key_press": False,
+    "take_screenshot": False,
 }
 
 # In-memory cache for permissions

@@ -1,0 +1,53 @@
+# AutoMicro-Bot: How to Run
+
+This guide explains how to set up and run the AutoMicro-Bot project (Frontend and Backend).
+
+## 1. Prerequisites
+Before starting, ensure you have the following installed:
+- Node.js (v18+)
+- Python (v3.11+)
+- Poetry (for backend dependency management)
+- Rust (for Tauri builds)
+- Ollama (installed and running)
+
+---
+
+## 2. Backend Setup (Python)
+The backend is a FastAPI server that orchestrates the AI logic.
+
+1. Open a terminal and navigate to the backend directory:
+   cd back-end
+
+2. Install dependencies:
+   poetry install
+
+3. Configure environment variables:
+   cp .env.example .env
+   (Edit .env if you need to change the OLLAMA_MODEL or other settings)
+
+4. Pull the required AI model (Ollama must be running):
+   ollama pull llama3
+
+5. Start the backend server:
+   poetry run python -m app.main
+
+---
+
+## 3. Frontend Setup (Tauri + React)
+The frontend is a desktop application built with Tauri and React.
+
+1. Open a new terminal and navigate to the frontend directory:
+   cd front-end
+
+2. Install dependencies:
+   npm install
+
+3. Start the application in development mode:
+   npm run tauri dev
+
+---
+
+## 4. Troubleshooting
+- Ensure Ollama is running before starting the backend.
+- If the frontend cannot connect to the backend, check the CORS_ORIGINS in the backend .env file.
+- For first-time Tauri users, ensure you have the necessary system dependencies for Rust and Tauri development.

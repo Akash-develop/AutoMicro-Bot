@@ -23,6 +23,7 @@ class MessageRecord(BaseModel):
     session_id: str
     role: str  # "user" | "assistant"
     content: str
+    attachment: Optional[dict] = None
     timestamp: datetime
 
 

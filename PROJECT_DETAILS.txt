@@ -1,0 +1,94 @@
+# AutoMicro-Bot: Full Project Documentation
+
+## 1. Project Overview
+AutoMicro-Bot is a premium, cross-platform desktop AI assistant that floats on the user's screen. It features a modern Glassmorphism UI and is capable of performing system-level tasks, web browsing, and maintaining long-term memory.
+
+---
+
+## 2. Technical Stack
+
+### Frontend
+- **Framework**: React.js with Vite
+- **Desktop Wrapper**: Tauri (Rust-based)
+- **Styling**: Tailwind CSS (Glassmorphism design)
+- **State Management**: React Hooks
+- **Icons**: Lucide React
+
+### Backend
+- **Language**: Python 3.11+
+- **API Framework**: FastAPI
+- **AI Orchestration**: LangGraph & LangChain
+- **LLM Support**: Ollama (local), OpenAI, Google Gemini
+- **Database**: 
+  - SQLite (Chat history & Session management)
+  - ChromaDB (Vector database for long-term memory)
+- **Dependency Management**: Poetry
+
+---
+
+## 3. Core Features
+- **Floating UI**: Always-on-top, draggable chat widget.
+- **Tool Integration**: The bot can:
+  - Execute terminal commands (macOS optimized).
+  - Open URLs and search the web.
+  - Create files and folders.
+  - Manage Excel data.
+  - Put the system to sleep.
+- **Memory System**:
+  - Short-Term Memory: Thread-based conversation history via LangGraph.
+  - Long-Term Memory: Semantic search using ChromaDB for recalling past interactions.
+- **Streaming**: Real-time WebSocket communication for token-by-token AI responses.
+
+---
+
+## 4. Architecture & Component Breakdown
+
+### Backend (back-end/)
+- **app/main.py**: Entry point. Configures FastAPI, CORS, and includes routers.
+- **app/graph/agent.py**: The "brain" of the bot. 
+  - Implements a ReAct agent using LangGraph.
+  - Manages tool selection and system prompts.
+  - Handles different LLM providers (Ollama, OpenAI, Gemini).
+- **app/routes/chat.py**: Manages WebSocket connections for real-time chat.
+- **app/routes/settings.py**: API endpoints for updating AI provider, model, and system permissions.
+- **app/db/**: Database layer handling SQLite connections and migrations.
+- **app/graph/tools/**: Python modules for each integrated tool (e.g., `terminal_executor.py`, `browser_actions.py`).
+
+### Frontend (front-end/)
+- **src/App.jsx**: Main container handling the floating window state and chat interface.
+- **src/components/**: Reusable UI components (ChatBubble, MessageList, InputField, SettingsDrawer).
+- **src/api/**: Helpers for communication with the FastAPI backend.
+- **src-tauri/**: Rust configuration for window dimensions, transparency, and tray icons.
+
+---
+
+## 5. File Structure
+```
+AutoMicro-bot/
+├── front-end/               # React + Tauri application
+│   ├── src/                 # React source code
+│   │   ├── components/      # UI components
+│   │   ├── api/             # API communication logic
+│   │   └── App.jsx          # Main application logic
+│   └── src-tauri/           # Rust source for native features
+├── back-end/                # FastAPI + LangGraph server
+│   ├── app/
+│   │   ├── graph/           # AI Agent & Tools logic
+│   │   ├── routes/          # API & WebSocket endpoints
+│   │   ├── db/              # SQLite & ChromaDB logic
+│   │   └── main.py          # Server entry point
+│   └── pyproject.toml       # Backend dependencies
+├── HOW_TO_RUN.txt           # Setup and execution guide
+└── PROJECT_DETAILS.txt      # This documentation
+```
+
+---
+
+## 6. How It Works (The Flow)
+1. **User Input**: User types a message in the floating React UI.
+2. **WebSocket**: The message is sent via WebSockets to the FastAPI backend.
+3. **LangGraph Agent**: The backend passes the message to the LangGraph agent.
+4. **Tool Selection**: The agent decides if it needs a tool (e.g., "create a file") or can answer directly.
+5. **Observation**: If a tool is used, the result (output) is fed back into the AI's context.
+6. **Streaming Response**: The final AI response is streamed back to the frontend token-by-token.
+7. **Memory Persistence**: The interaction is saved to SQLite (history) and ChromaDB (long-term memory).

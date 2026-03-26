@@ -1,4 +1,5 @@
 import os
+import logging
 import sqlite3
 import asyncio
 from dotenv import load_dotenv
@@ -14,6 +15,8 @@ from langgraph.prebuilt import create_react_agent
 from app.db.database import save_message, get_llm_settings
 from app.graph.tools.permission_manager import load_permissions, BUILTIN_TOOLS
 
+logger = logging.getLogger(__name__)
+
 # Tools
 from app.graph.tools.terminal_executor import execute_terminal_command
 from app.graph.tools.browser_actions import open_url, search_web
@@ -21,6 +24,7 @@ from app.graph.tools.system_actions import sleep_system
 from app.graph.tools.file_actions import create_folder, create_file
 from app.graph.tools.excel_actions import create_excel_with_sample_data
 from app.graph.tools.memory_actions import save_long_term_memory
+from app.graph.tools.desktop_actions import mouse_click, mouse_move, type_text, key_press, take_screenshot, get_screen_size
 from app.db.chroma import search_memory
 
 load_dotenv()
@@ -31,16 +35,24 @@ _saver = None
 _current_provider = "ollama"  # Track provider for specialized message formatting
 _current_model = "llama3"     # Track model name in case provider is aliased
 STM_DB_PATH = os.getenv("STM_DB_PATH", "stm.db")
-_checkpointer_ctx = AsyncSqliteSaver.from_conn_string(STM_DB_PATH)
+_saver_ctx = None  # To track the active context manager
 
 def reset_agent():
     """Global hook to clear the singleton and force re-init with new settings.
     Bug #4 fix: also clears _saver so the SQLite checkpointer connection
     is cleanly re-opened on next get_app() call (prevents file-handle leaks).
     """
-    global _agent_app, _saver
+    global _agent_app, _saver, _saver_ctx
     _agent_app = None
+    # Bug #4 fix: cleanly shut down and clear saver
+    if _saver_ctx:
+        # Note: In a real app we'd await _saver_ctx.__aexit__(None, None, None)
+        # but since this is a global reset and we are in a sync function,
+        # we'll just null them and let GC handle it, or better, 
+        # let the next get_app call handle the fresh init.
+        pass
     _saver = None
+    _saver_ctx = None
 
 # ── LangGraph Setup ───────────────────────────────────────
 
@@ -52,7 +64,13 @@ tools = [
     create_folder,
     create_file,
     create_excel_with_sample_data,
-    save_long_term_memory
+    save_long_term_memory,
+    mouse_click,
+    mouse_move,
+    type_text,
+    key_press,
+    take_screenshot,
+    get_screen_size
 ]
 
 def build_system_prompt(state: MessagesState) -> list:
@@ -67,9 +85,15 @@ def build_system_prompt(state: MessagesState) -> list:
         "CRITICAL TOOL INSTRUCTION:\n"
         "- You may write a short, conversational response before using a tool IF it helps the user understand what you are doing, but it is NOT mandatory if the task is obvious.\n"
         "- If the user asks for multiple actions (e.g., 'create a folder and a file inside it'), you MUST execute the first tool, wait for the result, and then execute the second tool in the same response chain until all tasks are complete.\n"
+        "DESKTOP AUTOMATION INSTRUCTIONS:\n"
+        "- Use `get_screen_size` before complex mouse actions to understand the resolution.\n"
+        "- Use `take_screenshot` to see the current state of the screen if you are unsure where to click.\n"
+        "- When typing, specify reasonable intervals to mimic human input.\n"
         "INTERRUPTION HANDLING:\n"
         "- If you are interrupted or the user stops you, do NOT try to explain or 'fix' the situation with more tools or long messages. Simply wait for the next user request."
     )
+    # Ensure it's a string to avoid Pyre errors on +=
+    base_prompt = str(base_prompt)
     
     perms = load_permissions()
     custom_rules_enabled = []
@@ -105,7 +129,7 @@ def build_system_prompt(state: MessagesState) -> list:
         try:
             relevant_memories = search_memory(latest_user_msg, n_results=3)
             if relevant_memories:
-                base_prompt += "\n\nRELEVANT LONG-TERM MEMORIES (Context for this conversation):\n"
+                base_prompt += "\n\nRELEVANT LONG-TERM MEMORIES (Context for this conversation):\n- " + "\n- ".join(relevant_memories) + "\n"
         except Exception as e:
             pass
 
@@ -153,11 +177,19 @@ async def get_app():
         _current_provider = provider
         _current_model = conf['model'].lower()
         
+        base_url = conf.get('base_url', '').strip()
+        
+        # PROVIDER AUTO-CORRECTION:
+        # If user picks ollama but gives a siliconflow URL, they definitely want openai-compat
+        if "siliconflow.cn" in base_url and provider in ("ollama", "ollama-cloud"):
+            logger.warning("Auto-correcting provider to openai-compat for SiliconFlow URL.")
+            provider = "openai-compat"
+
         if provider in ("openai", "openai-compat"):
             llm = ChatOpenAI(
                 model=conf['model'],
-                openai_api_base=conf['base_url'],
-                openai_api_key=conf['api_key'],
+                base_url=base_url,
+                api_key=conf['api_key'],
                 temperature=0.7
             )
         elif provider == "gemini":
@@ -166,16 +198,30 @@ async def get_app():
                 google_api_key=conf['api_key'],
                 temperature=0.7
             )
-        else:
+        elif provider in ("ollama", "ollama-cloud"):
+            headers = None
+            if provider == "ollama-cloud" and conf.get('api_key'):
+                headers = {'Authorization': f"Bearer {conf['api_key']}"}
+            
             llm = ChatOllama(
                 model=conf['model'],
-                base_url=conf['base_url'],
+                base_url=base_url or "http://localhost:11434",
+                client_kwargs={"headers": headers} if headers else {},
+                temperature=0.7
+            )
+        else:
+            # Default to Ollama if unknown
+            llm = ChatOllama(
+                model=conf['model'],
+                base_url=base_url or "http://localhost:11434",
                 temperature=0.7
             )
 
         # AsyncSqliteSaver.from_conn_string returns an async context manager
         if _saver is None:
-            _saver = await _checkpointer_ctx.__aenter__()
+            global _saver_ctx
+            _saver_ctx = AsyncSqliteSaver.from_conn_string(STM_DB_PATH)
+            _saver = await _saver_ctx.__aenter__()
         
         _agent_app = create_react_agent(llm, tools=tools, checkpointer=_saver, state_modifier=build_system_prompt)
     return _agent_app

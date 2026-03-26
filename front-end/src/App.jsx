@@ -49,6 +49,7 @@ export default function App() {
           id: `msg_${m.id}`,
           role: m.role,
           content: m.content,
+          attachment: m.attachment,
           timestamp: m.timestamp
         })));
       } catch (err) {
@@ -173,11 +174,12 @@ export default function App() {
   }, [viewMode, appWindow]);
 
   // Add a message to the list
-  const addMessage = (role, content) => {
+  const addMessage = (role, content, attachment = null) => {
     const msg = {
       id: `msg_${crypto.randomUUID()}`,
       role,
       content,
+      attachment,
       timestamp: new Date().toISOString(),
     };
     setMessages((prev) => [...prev, msg]);
@@ -186,7 +188,7 @@ export default function App() {
   };
 
   const handleSend = useCallback((text, attachment = null) => {
-    addMessage('user', text);
+    addMessage('user', text, attachment);
     setIsTyping(true);
 
     const msgId = `msg_${crypto.randomUUID()}`;

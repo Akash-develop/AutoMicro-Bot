@@ -7,11 +7,15 @@
     "create_file": true,
     "create_excel_with_sample_data": true,
     "save_long_term_memory": true,
+    "mouse_click": true,
+    "mouse_move": true,
+    "type_text": true,
+    "key_press": true,
+    "take_screenshot": true,
     "dont_do_user_saw_crash_my_os": false,
     "dont_do_user_saw_open_chrome": true,
     "get_desktop_state": true,
     "control_app": true,
-    "mouse_click": true,
     "keyboard_type": true,
     "move_mouse": true,
     "scroll_mouse": true,
@@ -19,6 +23,7 @@
     "press_keys": true,
     "scrape_web": true,
     "wait": true,
+    "get_screen_size": true,
     "_locked_tools": [
         "dont_do_user_saw_crash_my_os"
     ]

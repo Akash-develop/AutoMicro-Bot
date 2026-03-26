@@ -6,7 +6,8 @@ import { useState, useEffect } from 'react';
 import { 
     getPermissions, updatePermissions, deletePermission, 
     getMemories, deleteMemory, clearMemories, 
-    getLLMSettings, updateLLMSettings, getLLMHistory, activateLLMConfig, deleteLLMHistory 
+    getLLMSettings, updateLLMSettings, getLLMHistory, activateLLMConfig, deleteLLMHistory,
+    getAvailableModels
 } from '../api/settings.js';
 
 export default function SettingsDrawer({ isOpen, onClose }) {
@@ -19,12 +20,14 @@ export default function SettingsDrawer({ isOpen, onClose }) {
     const [editValue, setEditValue] = useState("");
     const [llmSettings, setLlmSettings] = useState({
         provider: 'ollama',
-        base_url: 'http://localhost:11434',
+        base_url: '',
         api_key: '',
-        model: 'llama3'
+        model: ''
     });
     const [llmHistory, setLlmHistory] = useState([]);
     const [activeTab, setActiveTab] = useState('config'); // 'config', 'history'
+    const [availableModels, setAvailableModels] = useState([]);
+    const [fetchingModels, setFetchingModels] = useState(false);
     const [saving, setSaving] = useState(false);
     const [isGlobalLocked, setIsGlobalLocked] = useState(
         localStorage.getItem('toolSettingsLocked') === 'true'
@@ -52,34 +55,25 @@ export default function SettingsDrawer({ isOpen, onClose }) {
         "create_folder",
         "create_file",
         "create_excel_with_sample_data",
-        "get_desktop_state",
-        "control_app",
+        "save_long_term_memory",
         "mouse_click",
-        "keyboard_type",
-        "move_mouse",
-        "scroll_mouse",
-        "drag_mouse",
-        "press_keys",
-        "scrape_web",
-        "wait"
+        "mouse_move",
+        "type_text",
+        "key_press",
+        "take_screenshot",
+        "get_screen_size"
     ];
 
     const TOOL_LABELS = {
         "search_web": "Internet Search",
         "execute_terminal_command": "System Terminal",
-        "get_desktop_state": "Desktop State",
-        "control_app": "App Control",
         "mouse_click": "Mouse Click",
-        "keyboard_type": "Keyboard Type",
-        "move_mouse": "Move Mouse",
-        "scroll_mouse": "Scroll Mouse",
-        "drag_mouse": "Drag Mouse",
-        "press_keys": "Press Keys",
-        "scrape_web": "Scrape Web",
-        "wait": "Wait",
-        "get_active_tab_details": "Active Tab Info",
-        "get_tab_content": "Read Page Text",
-        "run_browser_js": "Run Browser JS"
+        "mouse_move": "Move Mouse",
+        "type_text": "Type Text",
+        "key_press": "Press Keys",
+        "take_screenshot": "Take Screenshot",
+        "get_screen_size": "Screen Info",
+        "save_long_term_memory": "Memory Storage"
     };
 
     useEffect(() => {
@@ -113,15 +107,42 @@ export default function SettingsDrawer({ isOpen, onClose }) {
     useEffect(() => {
         if (isOpen && activeMenu === 'llm') {
             setLoading(true);
-            Promise.all([getLLMSettings(), getLLMHistory()])
-                .then(([settings, history]) => {
-                    setLlmSettings(settings);
+            // Only fetch history for the history tab. 
+            // The Configuration tab starts fresh (empty) by user preference.
+            getLLMHistory()
+                .then((history) => {
                     setLlmHistory(history);
                 })
-                .catch(err => console.error("Failed to fetch LLM data", err))
+                .catch(err => console.error("Failed to fetch LLM history", err))
                 .finally(() => setLoading(false));
         }
     }, [isOpen, activeMenu]);
+
+    // Fetch available models when provider, base_url or api_key changes
+    useEffect(() => {
+        const isCompatible = llmSettings.provider === 'ollama' || llmSettings.provider === 'ollama-cloud' || llmSettings.provider === 'openai-compat';
+        if (isOpen && activeMenu === 'llm' && activeTab === 'config' && isCompatible) {
+            // For openai-compat, we definitely need a base_url and api_key (usually)
+            if (llmSettings.provider === 'openai-compat' && (!llmSettings.base_url || !llmSettings.api_key)) {
+                setAvailableModels([]);
+                return;
+            }
+
+            const baseUrl = llmSettings.base_url || (llmSettings.provider === 'ollama' ? "http://localhost:11434" : "https://ollama.com");
+            setFetchingModels(true);
+            getAvailableModels(llmSettings.provider, baseUrl, llmSettings.api_key)
+                .then(data => {
+                    setAvailableModels(data.models || []);
+                })
+                .catch(err => {
+                    console.error("Failed to fetch available models", err);
+                    setAvailableModels([]);
+                })
+                .finally(() => setFetchingModels(false));
+        } else {
+            setAvailableModels([]);
+        }
+    }, [isOpen, activeMenu, activeTab, llmSettings.provider, llmSettings.base_url, llmSettings.api_key]);
 
     const handleDeleteMemory = async (id) => {
         try {
@@ -283,6 +304,15 @@ export default function SettingsDrawer({ isOpen, onClose }) {
             console.error("Activation failed:", err);
             alert("Failed to activate configuration: " + err.message);
         }
+    };
+
+    const applySiliconFlowPreset = () => {
+        setLlmSettings({
+            ...llmSettings,
+            provider: 'openai-compat',
+            base_url: 'https://api.siliconflow.cn/v1',
+            model: 'deepseek-ai/DeepSeek-V3' // Default popular SiliconFlow model
+        });
     };
 
     const handleDeleteHistory = async (id) => {
@@ -462,6 +492,17 @@ export default function SettingsDrawer({ isOpen, onClose }) {
                                                 </div>
                                             );
                                         })}
+                                        
+                                        <div className="mt-4 p-2 rounded bg-dark border border-warning" style={{ fontSize: '0.65rem' }}>
+                                            <div className="text-warning fw-bold mb-1">⚠️ System Permissions Required</div>
+                                            <div className="text-secondary">
+                                                To use Desktop Control, your OS may require permissions:
+                                                <ul className="ps-3 mt-1 mb-0">
+                                                    <li><strong>macOS</strong>: Settings &gt; Privacy &gt; Accessibility &gt; Enable AutoMicro-Bot</li>
+                                                    <li><strong>Windows</strong>: Settings &gt; Privacy &gt; enable screen control</li>
+                                                </ul>
+                                            </div>
+                                        </div>
                                     </div>
 
                                     {/* Custom Rules Group */}
@@ -587,25 +628,72 @@ export default function SettingsDrawer({ isOpen, onClose }) {
                                         <select 
                                             className="form-select form-select-sm bg-dark text-white border-secondary"
                                             value={llmSettings.provider}
-                                            onChange={e => setLlmSettings({...llmSettings, provider: e.target.value})}
+                                            onChange={e => {
+                                                setLlmSettings({
+                                                    ...llmSettings, 
+                                                    provider: e.target.value,
+                                                    base_url: '',
+                                                    api_key: '',
+                                                    model: ''
+                                                });
+                                            }}
                                         >
                                             <option value="ollama">Ollama (Local)</option>
+                                            <option value="ollama-cloud">Ollama (Cloud)</option>
                                             <option value="openai">OpenAI</option>
                                             <option value="gemini">Gemini (Google)</option>
                                             <option value="openai-compat">OpenAI-Compatible (Groq, etc.)</option>
                                         </select>
                                     </div>
 
-                                    <div className="mb-3">
-                                        <label className="form-label text-secondary small fw-bold">Base URL</label>
-                                        <input 
-                                            type="text" 
-                                            className="form-control form-control-sm bg-dark text-white border-secondary"
-                                            value={llmSettings.base_url}
-                                            onChange={e => setLlmSettings({...llmSettings, base_url: e.target.value})}
-                                            placeholder="e.g. http://localhost:11434"
-                                        />
-                                    </div>
+                                    {llmSettings.provider === 'ollama-cloud' && (
+                                        <div className="mb-3">
+                                            <button 
+                                                type="button"
+                                                onClick={applySiliconFlowPreset}
+                                                className="btn btn-xs btn-outline-info w-100 py-1"
+                                                style={{ fontSize: '0.7rem' }}
+                                            >
+                                                Using SiliconFlow? Auto-Configure
+                                            </button>
+                                        </div>
+                                    )}
+
+                                    {llmSettings.provider !== 'gemini' && (
+                                        <div className="mb-3">
+                                            <label className="form-label text-secondary small fw-bold">Base URL</label>
+                                            <input 
+                                                type="text" 
+                                                className="form-control form-control-sm bg-dark text-white border-secondary"
+                                                value={llmSettings.base_url}
+                                                onChange={e => {
+                                                    const val = e.target.value;
+                                                    let updates = { base_url: val };
+                                                    // Auto-switch to openai-compat if SiliconFlow is detected
+                                                    if (val.includes('siliconflow.cn') && (llmSettings.provider === 'ollama' || llmSettings.provider === 'ollama-cloud')) {
+                                                        updates.provider = 'openai-compat';
+                                                    }
+                                                    setLlmSettings({...llmSettings, ...updates});
+                                                }}
+                                                placeholder={
+                                                    llmSettings.provider === 'ollama' ? "http://localhost:11434" : 
+                                                    llmSettings.provider === 'openai-compat' ? "https://api.siliconflow.cn/v1" : 
+                                                    "https://your-api-endpoint.com/v1"
+                                                }
+                                            />
+                                            <div className="mt-1 text-secondary" style={{ fontSize: '0.65rem' }}>
+                                                {llmSettings.provider === 'ollama' ? "Default: http://localhost:11434" : 
+                                                 llmSettings.provider === 'openai-compat' ? "SiliconFlow: https://api.siliconflow.cn/v1" : 
+                                                 "Ensure your URL includes /v1 if required."}
+                                            </div>
+                                            {llmSettings.base_url.includes('ollama.com') && (
+                                                <div className="mt-1 text-warning" style={{ fontSize: '0.65rem', fontWeight: 'bold' }}>
+                                                    ⚠️ Warning: ollama.com is a website, NOT an API host. 
+                                                    Try: api.siliconflow.cn/v1
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
 
                                     <div className="mb-3">
                                         <label className="form-label text-secondary small fw-bold">API Key</label>
@@ -614,19 +702,58 @@ export default function SettingsDrawer({ isOpen, onClose }) {
                                             className="form-control form-control-sm bg-dark text-white border-secondary"
                                             value={llmSettings.api_key}
                                             onChange={e => setLlmSettings({...llmSettings, api_key: e.target.value})}
-                                            placeholder="Not required for local"
+                                            placeholder={llmSettings.provider === 'ollama' ? "Not required for local" : "Enter your API Key"}
                                         />
                                     </div>
 
                                     <div className="mb-3">
                                         <label className="form-label text-secondary small fw-bold">Model Name</label>
-                                        <input 
-                                            type="text" 
-                                            className="form-control form-control-sm bg-dark text-white border-secondary"
-                                            value={llmSettings.model}
-                                            onChange={e => setLlmSettings({...llmSettings, model: e.target.value})}
-                                            placeholder="e.g. llama3"
-                                        />
+                                        {(llmSettings.provider === 'ollama' || llmSettings.provider === 'ollama-cloud' || llmSettings.provider === 'openai-compat') && availableModels.length > 0 ? (
+                                            <div className="position-relative">
+                                                <select 
+                                                    className="form-select form-select-sm bg-dark text-white border-secondary"
+                                                    value={llmSettings.model}
+                                                    onChange={e => setLlmSettings({...llmSettings, model: e.target.value})}
+                                                >
+                                                    <option value="">Select a model...</option>
+                                                    {availableModels.map(model => (
+                                                        <option key={model} value={model}>{model}</option>
+                                                    ))}
+                                                </select>
+                                                {fetchingModels && (
+                                                    <div className="position-absolute end-0 top-50 translate-middle-y pe-4">
+                                                        <div className="spinner-border spinner-border-sm text-secondary" role="status">
+                                                            <span className="visually-hidden">Loading...</span>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ) : (
+                                            <div className="position-relative">
+                                                <input 
+                                                    type="text" 
+                                                    className="form-control form-control-sm bg-dark text-white border-secondary"
+                                                    value={llmSettings.model}
+                                                    onChange={e => setLlmSettings({...llmSettings, model: e.target.value})}
+                                                    placeholder={
+                                                        llmSettings.provider === 'gemini' ? "e.g. gemini-1.5-flash" : 
+                                                        llmSettings.provider === 'openai-compat' ? "e.g. moonshotai/Kimi-V1.5" :
+                                                        "e.g. llama3"
+                                                    }
+                                                />
+                                                {(llmSettings.provider === 'ollama' || llmSettings.provider === 'ollama-cloud' || llmSettings.provider === 'openai-compat') && fetchingModels && (
+                                                    <div className="position-absolute end-0 top-50 translate-middle-y pe-2">
+                                                        <div className="spinner-border spinner-border-sm text-secondary" role="status"></div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                        <div className="mt-1 text-info" style={{ fontSize: '0.65rem' }}>
+                                            {llmSettings.provider === 'ollama' || llmSettings.provider === 'ollama-cloud' || llmSettings.provider === 'openai-compat' ? 
+                                                (availableModels.length > 0 ? `${availableModels.length} models discovered.` : (fetchingModels ? "Fetching models..." : "No models found or config incomplete.")) :
+                                                "Cloud models require a stable internet connection."
+                                            }
+                                        </div>
                                     </div>
 
                                     <button 

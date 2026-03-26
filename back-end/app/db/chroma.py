@@ -57,7 +57,9 @@ def search_memory(query: str, n_results: int = 3) -> list[str]:
         )
         
         if results and "documents" in results and results["documents"]:
-            return results["documents"][0] # Return the list of matched documents
+            found = results["documents"][0]
+            logger.info(f"Retrieved {len(found)} relevant memories for query: '{query[:50]}...'")
+            return found
     except Exception as e:
         logger.error(f"Error searching ChromaDB memory: {e}")
         
@@ -78,6 +80,7 @@ def get_all_memories() -> list[dict]:
                     "id": results["ids"][i],
                     "text": results["documents"][i]
                 })
+        logger.info(f"Retrieved a total of {len(memories)} memories.")
         return memories
     except Exception as e:
         logger.error(f"Error retrieving all memories from ChromaDB: {e}")
@@ -96,15 +99,18 @@ def delete_memory(memory_id: str) -> bool:
         return False
 
 def clear_all_memories() -> bool:
-    """Clear all memories."""
-    global collection
-    if not client:
+    """Clear all memories by deleting all documents in the collection."""
+    if not collection:
         return False
         
     try:
-        # Simplest way is to drop and recreate the collection
-        client.delete_collection(name=COLLECTION_NAME)
-        collection = client.create_collection(name=COLLECTION_NAME)
+        results = collection.get()
+        ids = results.get("ids", [])
+        if ids:
+            collection.delete(ids=ids)
+            logger.info(f"Cleared all memories ({len(ids)} items removed).")
+        else:
+            logger.info("Clear all called but collection was already empty.")
         return True
     except Exception as e:
         logger.error(f"Error clearing memories from ChromaDB: {e}")
