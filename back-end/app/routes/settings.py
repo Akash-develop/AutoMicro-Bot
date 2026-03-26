@@ -126,19 +126,39 @@ async def get_available_models_endpoint(provider: str, base_url: str, api_key: O
     
     try:
         async with httpx.AsyncClient() as client:
+            headers = {}
+            if api_key:
+                headers["Authorization"] = f"Bearer {api_key}"
+            
+            # Use /api/tags for Ollama and Ollama-Cloud (and as a default for custom URLs)
             if provider in ("ollama", "ollama-cloud"):
-                resp = await client.get(f"{base_url}/api/tags", timeout=5.0)
+                resp = await client.get(f"{base_url}/api/tags", headers=headers, timeout=5.0)
                 if resp.status_code == 200:
                     data = resp.json()
                     models = [m["name"] for m in data.get("models", [])]
                     return {"models": models}
+                else:
+                    # Try /models if /api/tags fails for ollama-cloud (unlikely but safe)
+                    resp = await client.get(f"{base_url}/models", headers=headers, timeout=5.0)
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        models = [m.get("id") or m.get("name") for m in data.get("data", [])]
+                        return {"models": models}
+            
             elif provider == "openai-compat":
-                headers = {}
-                if api_key:
-                    headers["Authorization"] = f"Bearer {api_key}"
+                # Primarily check /api/tags first as per user request for their base URL
+                resp = await client.get(f"{base_url}/api/tags", headers=headers, timeout=5.0)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    models = [m["name"] for m in data.get("models", [])]
+                    return {"models": models}
+                
+                # Fallback to standard OpenAI /models
                 resp = await client.get(f"{base_url}/models", headers=headers, timeout=5.0)
                 if resp.status_code == 200:
                     data = resp.json()
+                    models = [m.get("id") or m.get("name") for m in data.get("data", [])]
+                    return {"models": models}
                     # OpenAI /models returns [{"id": "model-name", ...}, ...]
                     models = [m["id"] for m in data.get("data", [])]
                     return {"models": models}

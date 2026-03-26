@@ -129,15 +129,21 @@ export default function SettingsDrawer({ isOpen, onClose }) {
 
     // Fetch available models when provider, base_url or api_key changes
     useEffect(() => {
-        const isCompatible = llmSettings.provider === 'ollama' || llmSettings.provider === 'ollama-cloud' || llmSettings.provider === 'openai-compat';
+        const isCompatible = llmSettings.provider !== 'gemini';
         if (isOpen && activeMenu === 'llm' && activeTab === 'config' && isCompatible) {
-            // For openai-compat, we definitely need a base_url and api_key (usually)
-            if (llmSettings.provider === 'openai-compat' && (!llmSettings.base_url || !llmSettings.api_key)) {
+            // For OpenAI, we use the hardcoded list (or we could fetch, but user wants base_url based)
+            if (llmSettings.provider === 'openai' && !llmSettings.base_url) {
+                setAvailableModels(['gpt-4o', 'gpt-4o-mini', 'o1-preview', 'o1-mini']);
+                return;
+            }
+
+            const baseUrl = llmSettings.base_url || (llmSettings.provider === 'ollama' ? "http://localhost:11434" : "");
+            
+            if (!baseUrl && llmSettings.provider !== 'openai') {
                 setAvailableModels([]);
                 return;
             }
 
-            const baseUrl = llmSettings.base_url || (llmSettings.provider === 'ollama' ? "http://localhost:11434" : "https://ollama.com");
             setFetchingModels(true);
             getAvailableModels(llmSettings.provider, baseUrl, llmSettings.api_key)
                 .then(data => {
@@ -313,15 +319,6 @@ export default function SettingsDrawer({ isOpen, onClose }) {
             console.error("Activation failed:", err);
             alert("Failed to activate configuration: " + err.message);
         }
-    };
-
-    const applySiliconFlowPreset = () => {
-        setLlmSettings({
-            ...llmSettings,
-            provider: 'openai-compat',
-            base_url: 'https://api.siliconflow.cn/v1',
-            model: 'deepseek-ai/DeepSeek-V3' // Default popular SiliconFlow model
-        });
     };
 
     const handleDeleteHistory = async (id) => {
@@ -627,12 +624,19 @@ export default function SettingsDrawer({ isOpen, onClose }) {
                                             className="form-select form-select-sm bg-dark text-white border-secondary"
                                             value={llmSettings.provider}
                                             onChange={e => {
+                                                const newProvider = e.target.value;
+                                                const updates = { provider: newProvider };
+                                                
+                                                // Only reset if moving to/from Gemini
+                                                if (newProvider === 'gemini' || llmSettings.provider === 'gemini') {
+                                                    updates.base_url = '';
+                                                    updates.api_key = '';
+                                                    updates.model = '';
+                                                }
+                                                
                                                 setLlmSettings({
                                                     ...llmSettings, 
-                                                    provider: e.target.value,
-                                                    base_url: '',
-                                                    api_key: '',
-                                                    model: ''
+                                                    ...updates
                                                 });
                                             }}
                                         >
@@ -644,18 +648,6 @@ export default function SettingsDrawer({ isOpen, onClose }) {
                                         </select>
                                     </div>
 
-                                    {llmSettings.provider === 'ollama-cloud' && (
-                                        <div className="mb-3">
-                                            <button 
-                                                type="button"
-                                                onClick={applySiliconFlowPreset}
-                                                className="btn btn-xs btn-outline-info w-100 py-1"
-                                                style={{ fontSize: '0.7rem' }}
-                                            >
-                                                Using SiliconFlow? Auto-Configure
-                                            </button>
-                                        </div>
-                                    )}
 
                                     {llmSettings.provider !== 'gemini' && (
                                         <div className="mb-3">
@@ -665,29 +657,22 @@ export default function SettingsDrawer({ isOpen, onClose }) {
                                                 className="form-control form-control-sm bg-dark text-white border-secondary"
                                                 value={llmSettings.base_url}
                                                 onChange={e => {
-                                                    const val = e.target.value;
-                                                    let updates = { base_url: val };
-                                                    // Auto-switch to openai-compat if SiliconFlow is detected
-                                                    if (val.includes('siliconflow.cn') && (llmSettings.provider === 'ollama' || llmSettings.provider === 'ollama-cloud')) {
-                                                        updates.provider = 'openai-compat';
-                                                    }
-                                                    setLlmSettings({...llmSettings, ...updates});
+                                                    setLlmSettings({...llmSettings, base_url: e.target.value});
                                                 }}
                                                 placeholder={
                                                     llmSettings.provider === 'ollama' ? "http://localhost:11434" : 
-                                                    llmSettings.provider === 'openai-compat' ? "https://api.siliconflow.cn/v1" : 
+                                                    llmSettings.provider === 'openai-compat' ? "https://your-api-endpoint.com/v1" : 
                                                     "https://your-api-endpoint.com/v1"
                                                 }
                                             />
                                             <div className="mt-1 text-secondary" style={{ fontSize: '0.65rem' }}>
                                                 {llmSettings.provider === 'ollama' ? "Default: http://localhost:11434" : 
-                                                 llmSettings.provider === 'openai-compat' ? "SiliconFlow: https://api.siliconflow.cn/v1" : 
-                                                 "Ensure your URL includes /v1 if required."}
+                                                 "Ensure your URL includes /v1 if required by the provider."}
                                             </div>
                                             {llmSettings.base_url.includes('ollama.com') && (
                                                 <div className="mt-1 text-warning" style={{ fontSize: '0.65rem', fontWeight: 'bold' }}>
                                                     ⚠️ Warning: ollama.com is a website, NOT an API host. 
-                                                    Try: api.siliconflow.cn/v1
+                                                    Try your dedicated API endpoint.
                                                 </div>
                                             )}
                                         </div>

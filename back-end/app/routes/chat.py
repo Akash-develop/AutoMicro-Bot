@@ -198,7 +198,7 @@ async def websocket_chat(websocket: WebSocket, session_id: str):
                 message_content = user_message
 
             input_messages = {"messages": [HumanMessage(content=message_content)]}
-            await save_message(session_id, "user", user_message)
+            await save_message(session_id, "user", user_message, attachment if image_content else None)
 
             # --- Streaming Loop ---
             full_response: str = ""

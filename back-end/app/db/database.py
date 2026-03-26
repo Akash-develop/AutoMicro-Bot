@@ -5,6 +5,7 @@ Persistent SQLite storage for chat history using aiosqlite.
 import os
 import aiosqlite
 from datetime import datetime
+from typing import Optional
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -21,6 +22,7 @@ async def init_db():
                 session_id TEXT NOT NULL,
                 role TEXT NOT NULL,
                 content TEXT NOT NULL,
+                attachment TEXT, -- JSON string for multi-modal content
                 timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
             )
         """)
@@ -55,6 +57,11 @@ async def init_db():
                 columns = [row[1] for row in await cursor.fetchall()]
                 if "history_id" not in columns:
                     await db.execute("ALTER TABLE llm_settings ADD COLUMN history_id INTEGER")
+            
+            async with db.execute("PRAGMA table_info(messages)") as cursor:
+                columns = [row[1] for row in await cursor.fetchall()]
+                if "attachment" not in columns:
+                    await db.execute("ALTER TABLE messages ADD COLUMN attachment TEXT")
         except Exception as e:
             print(f"Migration error: {e}")
 
@@ -171,26 +178,38 @@ async def get_all_conversations():
 
 # ─── Messages ─────────────────────────────────────────────────────────────────
 
-async def save_message(session_id: str, role: str, content: str):
-    """Save a single message to history."""
+async def save_message(session_id: str, role: str, content: str, attachment: Optional[dict] = None):
+    """Save a single message to history with optional attachment."""
+    import json
+    attachment_json = json.dumps(attachment) if attachment else None
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
-            "INSERT INTO messages (session_id, role, content) VALUES (?, ?, ?)",
-            (session_id, role, content)
+            "INSERT INTO messages (session_id, role, content, attachment) VALUES (?, ?, ?, ?)",
+            (session_id, role, content, attachment_json)
         )
         await db.commit()
 
 
 async def get_history(session_id: str, limit: int = 50):
     """Retrieve chat history for a session."""
+    import json
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
-            "SELECT id, session_id, role, content, timestamp FROM messages WHERE session_id = ? ORDER BY timestamp ASC LIMIT ?",
+            "SELECT id, role, content, attachment, timestamp FROM messages WHERE session_id = ? ORDER BY timestamp ASC LIMIT ?",
             (session_id, limit)
         ) as cursor:
             rows = await cursor.fetchall()
-            return [dict(row) for row in rows]
+            history = []
+            for row in rows:
+                item = dict(row)
+                if item.get("attachment"):
+                    try:
+                        item["attachment"] = json.loads(item["attachment"])
+                    except:
+                        item["attachment"] = None
+                history.append(item)
+            return history
 
 
 async def clear_history(session_id: str):

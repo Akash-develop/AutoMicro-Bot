@@ -60,7 +60,7 @@ function ToolIndicator({ commandObj }) {
     );
 }
 
-export default function MessageBubble({ role, content, commands, timestamp, isNew }) {
+export default function MessageBubble({ role, content, attachment, commands, timestamp, isNew }) {
     const isUser = role === 'user';
     const hasCommands = commands && commands.length > 0;
     
@@ -95,6 +95,16 @@ export default function MessageBubble({ role, content, commands, timestamp, isNe
                         {commands.map((cmd, idx) => (
                             <ToolIndicator key={idx} commandObj={cmd} />
                         ))}
+                    </div>
+                )}
+                {attachment && attachment.mime_type && attachment.mime_type.startsWith('image/') && (
+                    <div className="mb-2 overflow-hidden rounded-lg border border-white/10" style={{ maxWidth: '300px' }}>
+                        <img 
+                            src={attachment.content} 
+                            alt="attachment" 
+                            className="w-100 h-auto d-block"
+                            style={{ maxHeight: '400px', objectFit: 'contain' }}
+                        />
                     </div>
                 )}
                 {content && (

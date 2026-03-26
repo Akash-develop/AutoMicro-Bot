@@ -167,12 +167,6 @@ async def get_app():
         _current_model = conf['model'].lower()
         
         base_url = conf.get('base_url', '').strip()
-        
-        # PROVIDER AUTO-CORRECTION:
-        # If user picks ollama but gives a siliconflow URL, they definitely want openai-compat
-        if "siliconflow.cn" in base_url and provider in ("ollama", "ollama-cloud"):
-            logger.warning("Auto-correcting provider to openai-compat for SiliconFlow URL.")
-            provider = "openai-compat"
 
         if provider in ("openai", "openai-compat"):
             llm = ChatOpenAI(
