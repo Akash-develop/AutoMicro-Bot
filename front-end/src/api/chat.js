@@ -3,7 +3,9 @@
  * All API calls to the FastAPI backend
  */
 
-const BASE_URL = 'http://localhost:8000';
+const BACKEND_PORT_TAURI_PROD = '8765';
+const isTauri = typeof window !== 'undefined' && !!window.__TAURI__;
+const BASE_URL = isTauri ? `http://127.0.0.1:${BACKEND_PORT_TAURI_PROD}` : 'http://localhost:8000';
 
 /**
  * Send a message to the backend.
