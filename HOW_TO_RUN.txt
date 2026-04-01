@@ -1,53 +1,48 @@
-# AutoMicro-Bot: How to Run
+AutoMicro-Bot — Quickstart (TXT)
+================================
 
-This guide explains how to set up and run the AutoMicro-Bot project (Frontend and Backend).
+This project has two parts:
+- back-end/  (FastAPI + LangGraph agent)  -> http://localhost:8000
+- front-end/ (Tauri + React UI)           -> Vite dev http://localhost:5173
 
-## 1. Prerequisites
-Before starting, ensure you have the following installed:
-- Node.js (v18+)
-- Python (v3.11+)
-- Poetry (for backend dependency management)
-- Rust (for Tauri builds)
-- Ollama (installed and running)
 
----
+Prerequisites
+-------------
+- Node.js 18+
+- Python 3.11+
+- Poetry
+- Rust toolchain (for Tauri)
+- Ollama installed and running (if using local models)
 
-## 2. Backend Setup (Python)
-The backend is a FastAPI server that orchestrates the AI logic.
 
-1. Open a terminal and navigate to the backend directory:
-   cd back-end
+Backend (Python)
+---------------
+cd back-end
+poetry install
+cp .env.example .env
 
-2. Install dependencies:
-   poetry install
+# (Optional) pull a local model
+ollama pull llama3
 
-3. Configure environment variables:
-   cp .env.example .env
-   (Edit .env if you need to change the OLLAMA_MODEL or other settings)
+# Start FastAPI
+poetry run start
 
-4. Pull the required AI model (Ollama must be running):
-   ollama pull llama3
+Backend URL: http://localhost:8000
+Streaming (SSE): POST http://localhost:8000/chat/stream
 
-5. Start the backend server:
-   poetry run python -m app.main
 
----
+Frontend (Tauri + React)
+------------------------
+cd front-end
+npm install
 
-## 3. Frontend Setup (Tauri + React)
-The frontend is a desktop application built with Tauri and React.
+# Start Tauri dev (starts Vite automatically)
+npm run tauri dev
 
-1. Open a new terminal and navigate to the frontend directory:
-   cd front-end
 
-2. Install dependencies:
-   npm install
+Common issues
+-------------
+- If UI can’t connect: ensure backend is running on port 8000.
+- If you changed ports: frontend has BASE_URL hardcoded in:
+  front-end/src/api/chat.js and front-end/src/api/settings.js
 
-3. Start the application in development mode:
-   npm run tauri dev
-
----
-
-## 4. Troubleshooting
-- Ensure Ollama is running before starting the backend.
-- If the frontend cannot connect to the backend, check the CORS_ORIGINS in the backend .env file.
-- For first-time Tauri users, ensure you have the necessary system dependencies for Rust and Tauri development.

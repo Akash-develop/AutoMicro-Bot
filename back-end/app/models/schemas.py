@@ -64,6 +64,13 @@ class WSMessage(BaseModel):
     attachment: Optional[Attachment] = None
 
 
+class ChatStreamRequest(BaseModel):
+    """HTTP streaming chat request (SSE). Mirrors WS payload but includes session_id."""
+    session_id: str = Field(..., min_length=1, description="Unique session identifier")
+    message: str = Field(..., min_length=1, description="User message text")
+    attachment: Optional[Attachment] = None
+
+
 class WSToken(BaseModel):
     """WebSocket outbound streaming token"""
     type: str  # "token" | "done" | "error"

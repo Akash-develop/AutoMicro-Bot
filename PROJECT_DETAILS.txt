@@ -1,94 +1,287 @@
-# AutoMicro-Bot: Full Project Documentation
+AutoMicro-Bot — Project Documentation (TXT)
+==========================================
 
-## 1. Project Overview
-AutoMicro-Bot is a premium, cross-platform desktop AI assistant that floats on the user's screen. It features a modern Glassmorphism UI and is capable of performing system-level tasks, web browsing, and maintaining long-term memory.
+Last updated: 2026-03-31
+Repository root: AutoMicro-bot/
 
----
 
-## 2. Technical Stack
+1) What this project is
+-----------------------
+AutoMicro-Bot is a floating desktop AI chatbot app:
 
-### Frontend
-- **Framework**: React.js with Vite
-- **Desktop Wrapper**: Tauri (Rust-based)
-- **Styling**: Tailwind CSS (Glassmorphism design)
-- **State Management**: React Hooks
-- **Icons**: Lucide React
+- Desktop shell: Tauri (Rust)
+- UI: React + Vite (with Bootstrap-based styling/components)
+- Backend: FastAPI (Python) providing:
+  - HTTP chat endpoint (blocking)
+  - SSE chat streaming endpoint (token streaming + tool event streaming)
+  - SQLite persistence (messages, conversations, LLM settings + history)
+  - Optional long-term memory via ChromaDB
+  - LangGraph/LangChain agent orchestration
 
-### Backend
-- **Language**: Python 3.11+
-- **API Framework**: FastAPI
-- **AI Orchestration**: LangGraph & LangChain
-- **LLM Support**: Ollama (local), OpenAI, Google Gemini
-- **Database**: 
-  - SQLite (Chat history & Session management)
-  - ChromaDB (Vector database for long-term memory)
-- **Dependency Management**: Poetry
+The intended UX is an always-on-top, transparent “glass” widget that can also
+switch into bubble mode and a larger “normal” desktop-sized mode.
 
----
 
-## 3. Core Features
-- **Floating UI**: Always-on-top, draggable chat widget.
-- **Tool Integration**: The bot can:
-  - Execute terminal commands (macOS optimized).
-  - Open URLs and search the web.
-  - Create files and folders.
-  - Manage Excel data.
-  - Put the system to sleep.
-- **Memory System**:
-  - Short-Term Memory: Thread-based conversation history via LangGraph.
-  - Long-Term Memory: Semantic search using ChromaDB for recalling past interactions.
-- **Streaming**: Real-time WebSocket communication for token-by-token AI responses.
-
----
-
-## 4. Architecture & Component Breakdown
-
-### Backend (back-end/)
-- **app/main.py**: Entry point. Configures FastAPI, CORS, and includes routers.
-- **app/graph/agent.py**: The "brain" of the bot. 
-  - Implements a ReAct agent using LangGraph.
-  - Manages tool selection and system prompts.
-  - Handles different LLM providers (Ollama, OpenAI, Gemini).
-- **app/routes/chat.py**: Manages WebSocket connections for real-time chat.
-- **app/routes/settings.py**: API endpoints for updating AI provider, model, and system permissions.
-- **app/db/**: Database layer handling SQLite connections and migrations.
-- **app/graph/tools/**: Python modules for each integrated tool (e.g., `terminal_executor.py`, `browser_actions.py`).
-
-### Frontend (front-end/)
-- **src/App.jsx**: Main container handling the floating window state and chat interface.
-- **src/components/**: Reusable UI components (ChatBubble, MessageList, InputField, SettingsDrawer).
-- **src/api/**: Helpers for communication with the FastAPI backend.
-- **src-tauri/**: Rust configuration for window dimensions, transparency, and tray icons.
-
----
-
-## 5. File Structure
-```
+2) Top-level structure
+----------------------
 AutoMicro-bot/
-├── front-end/               # React + Tauri application
-│   ├── src/                 # React source code
-│   │   ├── components/      # UI components
-│   │   ├── api/             # API communication logic
-│   │   └── App.jsx          # Main application logic
-│   └── src-tauri/           # Rust source for native features
-├── back-end/                # FastAPI + LangGraph server
-│   ├── app/
-│   │   ├── graph/           # AI Agent & Tools logic
-│   │   ├── routes/          # API & WebSocket endpoints
-│   │   ├── db/              # SQLite & ChromaDB logic
-│   │   └── main.py          # Server entry point
-│   └── pyproject.toml       # Backend dependencies
-├── HOW_TO_RUN.txt           # Setup and execution guide
-└── PROJECT_DETAILS.txt      # This documentation
-```
+  README.md                High-level overview + basic setup
+  PROJECT_DETAILS.txt      (this file) Full documentation
+  HOW_TO_RUN.txt           Quickstart commands
 
----
+  back-end/                Python FastAPI + LangGraph agent
+  front-end/               Tauri + React UI (Vite)
 
-## 6. How It Works (The Flow)
-1. **User Input**: User types a message in the floating React UI.
-2. **WebSocket**: The message is sent via WebSockets to the FastAPI backend.
-3. **LangGraph Agent**: The backend passes the message to the LangGraph agent.
-4. **Tool Selection**: The agent decides if it needs a tool (e.g., "create a file") or can answer directly.
-5. **Observation**: If a tool is used, the result (output) is fed back into the AI's context.
-6. **Streaming Response**: The final AI response is streamed back to the frontend token-by-token.
-7. **Memory Persistence**: The interaction is saved to SQLite (history) and ChromaDB (long-term memory).
+
+3) Backend (Python / FastAPI)
+-----------------------------
+
+3.1 Entry point
+---------------
+File: back-end/app/main.py
+
+- App name: "AutoMicro-Bot API"
+- Default host/port for local dev:
+  - host: 127.0.0.1
+  - port: 8000
+- CORS:
+  - env var: CORS_ORIGINS
+  - default: "http://localhost:5173,tauri://localhost"
+
+3.2 API routes
+--------------
+File: back-end/app/routes/chat.py
+
+HTTP:
+- GET  /                          Health check: {"message": "...", "status": "online"}
+- POST /chat                      Blocking chat (JSON: {session_id, message})
+- POST /chat/stream               Streaming chat (SSE)
+
+History / conversations:
+- GET    /history                 List conversations (title, last active, etc.)
+- GET    /history/{session_id}     Messages for a session (oldest → newest)
+- DELETE /history/{session_id}     Delete a conversation + all messages
+- DELETE /history/{session_id}/messages
+                                  Clear messages only (keeps conversation record)
+- PATCH  /conversations/{session_id}
+                                  Rename conversation (JSON: {title})
+
+Utility:
+- POST /terminal/open              (macOS) opens Terminal.app in current dir
+
+Streaming (SSE) message formats (as implemented)
+------------------------------------------------
+Client → server (HTTP JSON body):
+{
+  "session_id": "abc123",
+  "message": "hi",
+  "attachment": {
+    "name": "file.png|notes.txt",
+    "content": "<data-url-for-images OR raw text content for text files>",
+    "mime_type": "image/png|text/plain|...",
+    "size": 12345
+  }
+}
+
+Server → client (SSE frames):
+- event: token
+  data: {"content":"..."}                     streamed assistant text
+- event: tool_start
+  data: {"command":"toolName"}                tool invocation started
+- event: tool_output
+  data: {"result":"..."}                      tool output chunk/result
+- event: done
+  data: {}                                    stream finished
+- event: error
+  data: {"content":"..."}                     error message
+
+Notes:
+- Text attachments are prepended into the user message.
+- Image attachments are passed as multimodal content (text + image_url).
+
+3.3 Agent orchestration
+-----------------------
+File: back-end/app/graph/agent.py
+
+- Framework: LangGraph + LangChain "ReAct" agent (`create_react_agent`)
+- Streaming:
+  - SSE route uses `app.astream(..., stream_mode="messages")`
+- State persistence (short-term memory / checkpointing):
+  - AsyncSqliteSaver uses a separate SQLite file:
+    - env var: STM_DB_PATH
+    - default: "stm.db"
+- LLM provider selection is dynamic and stored in SQLite (see DB section).
+  Supported providers in code:
+  - "ollama", "ollama-cloud" (ChatOllama)
+  - "openai", "openai-compat" (ChatOpenAI with custom base_url)
+  - "gemini" (ChatGoogleGenerativeAI)
+
+Tools available to the agent (registered in `agent.py`)
+-------------------------------------------------------
+These are the actual built-in tools that permissions apply to:
+- execute_terminal_command
+- open_url
+- search_web
+- sleep_system
+- create_folder
+- create_file
+- create_excel_with_sample_data
+- save_long_term_memory
+
+Tool permissions config
+-----------------------
+File path (backend):
+  back-end/app/config/tool_permissions.json
+
+Implementation:
+- back-end/app/graph/tools/permission_manager.py
+- Permissions are cached in memory and merged with defaults (BUILTIN_TOOLS).
+- A tool can be blocked; blocked tools return a user-readable denial string.
+- The settings API stores an additional key: "_locked_tools" (array of tool names).
+
+3.4 Persistence (SQLite + ChromaDB)
+-----------------------------------
+SQLite (chat history + settings):
+- File:
+  - env var: DB_PATH
+  - default: "./automicro.db" (relative to back-end working directory)
+- Tables (created in `init_db()`):
+  - messages (includes optional JSON "attachment")
+  - conversations (session_id primary key + title)
+  - llm_settings (single row id=1)
+  - llm_history (history of configs with is_active flag)
+
+ChromaDB (optional long-term memory):
+- File/directory:
+  - env var: CHROMA_DB_PATH
+  - default: "./chroma_db"
+- Collection:
+  - "long_term_memory"
+- Backing code:
+  - back-end/app/db/chroma.py
+
+
+4) Frontend (Tauri + React)
+---------------------------
+
+4.1 Dev server and build
+------------------------
+Folder: front-end/
+
+Key files:
+- front-end/package.json
+  - scripts:
+    - npm run dev           (Vite on http://localhost:5173)
+    - npm run tauri dev     (Tauri dev; runs Vite first)
+    - npm run build         (Vite build -> dist/)
+
+4.2 Tauri configuration
+-----------------------
+File: front-end/src-tauri/tauri.conf.json
+
+Important behavior:
+- devUrl: http://localhost:5173
+- Window:
+  - width: 360, height: 520
+  - transparent: true
+  - decorations: false
+  - alwaysOnTop: true
+  - resizable: true
+  - macOSPrivateApi: true (enabled)
+
+Rust entry:
+- front-end/src-tauri/src/main.rs -> calls app_lib::run()
+- front-end/src-tauri/src/lib.rs  -> configures tauri + log plugin in debug
+
+4.3 Backend API usage from UI
+-----------------------------
+File: front-end/src/api/chat.js
+- BASE_URL is hardcoded to: http://localhost:8000
+- Streaming endpoint is: POST http://localhost:8000/chat/stream (SSE)
+
+File: front-end/src/api/settings.js
+- BASE_URL is hardcoded to: http://localhost:8000
+- Uses /settings/* endpoints for permissions, memory, LLM config + model listing
+
+UI modes (high level)
+---------------------
+File: front-end/src/App.jsx
+- Generates and stores session id in localStorage ("automicro_session").
+- Modes:
+  - bubble mode: small snapped bubble (Tauri window resized + always-on-top)
+  - mini mode: smaller floating chat
+  - normal mode: large layout with persistent sidebar/history
+- Theme:
+  - localStorage key "automicro_theme" ("dark" or "light")
+
+
+5) Environment variables (.env)
+-------------------------------
+Backend env example file: back-end/.env.example
+
+Variables currently used by code:
+
+LLM + provider:
+- LLM_PROVIDER           (seed into DB if empty) default: ollama
+- OLLAMA_BASE_URL        (seed) default: http://localhost:11434
+- OLLAMA_API_KEY         (seed) default: ""
+- OLLAMA_MODEL           (seed) default: llama3
+
+Backend server:
+- CORS_ORIGINS           default: http://localhost:5173,tauri://localhost
+
+Persistence:
+- DB_PATH                default: ./automicro.db
+- STM_DB_PATH            default: stm.db
+- CHROMA_DB_PATH         default: ./chroma_db
+
+Notes:
+- The app seeds the initial LLM config into SQLite on first run; after that,
+  the active configuration is controlled via DB and settings API, not only env.
+
+
+6) How to run (recommended workflow)
+------------------------------------
+See HOW_TO_RUN.txt for quick commands.
+
+Typical development workflow:
+- Start backend FastAPI on port 8000
+- Start Tauri dev (which starts Vite on 5173)
+- Use the desktop window to chat (HTTP blocking or SSE streaming is used by the UI)
+
+
+7) Troubleshooting
+------------------
+
+Backend not reachable (UI errors / fetch fails):
+- Ensure backend is running on http://localhost:8000
+- Check CORS_ORIGINS includes the frontend origin:
+  - http://localhost:5173
+  - tauri://localhost
+
+Streaming not working:
+- Confirm backend endpoint: POST http://localhost:8000/chat/stream
+- Confirm port 8000 is free and backend logs show stream requests.
+
+“unauthorized” / “401” from an OpenAI-compatible provider:
+- Verify base_url is correct for your provider.
+- If using SiliconFlow, the backend includes a hint that base URL should be:
+  https://api.siliconflow.cn/v1
+- Do not use https://ollama.com as an API base URL (that is not an OpenAI-compatible API).
+
+ChromaDB issues:
+- If `back-end/app/db/chroma.py` cannot init the PersistentClient at CHROMA_DB_PATH,
+  long-term memory may not work; check file permissions and folder existence.
+
+Database files:
+- The repo already contains DB files (e.g., automicro.db, stm.db) in back-end/.
+  If you want a clean run, stop the backend and move/delete those files, then restart.
+
+
+8) Security notes (local-first, but still important)
+----------------------------------------------------
+- Tool permissions exist for potentially sensitive capabilities (terminal execution,
+  file creation, browser actions). Review and disable as needed in the UI.
+- API keys may be stored in SQLite (llm_settings / llm_history). Treat DB files
+  as sensitive if you use cloud providers.
+

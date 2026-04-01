@@ -25,35 +25,97 @@ export async function sendMessage(sessionId, message) {
  * Stream a response token by token via WebSocket, supporting tool events.
  */
 export function streamMessage(sessionId, message, onToken, onToolStart, onToolOutput, onDone, onError, attachment = null) {
-  const wsUrl = `ws://localhost:8000/ws/${sessionId}`;
-  const ws = new WebSocket(wsUrl);
+  const controller = new AbortController();
+  let closed = false;
 
-  ws.onopen = () => {
-    ws.send(JSON.stringify({ message, attachment }));
+  const close = () => {
+    if (closed) return;
+    closed = true;
+    controller.abort();
   };
 
-  ws.onmessage = (event) => {
-    const data = JSON.parse(event.data);
-    if (data.type === 'token') {
-      onToken(data.content);
-    } else if (data.type === 'tool_start') {
+  const parseEventBlock = (block) => {
+    // Expected:
+    // event: token|tool_start|tool_output|done|error
+    // data: {...}
+    const lines = block.split('\n').filter((l) => l.trim() !== '');
+    let eventName = null;
+    const dataLines = [];
+    for (const line of lines) {
+      if (line.startsWith('event:')) {
+        eventName = line.slice('event:'.length).trim();
+      } else if (line.startsWith('data:')) {
+        dataLines.push(line.slice('data:'.length).trim());
+      }
+    }
+    if (!eventName) return;
+    const dataStr = dataLines.join('\n') || '{}';
+    let data = {};
+    try {
+      data = JSON.parse(dataStr);
+    } catch {
+      data = { content: dataStr };
+    }
+
+    if (eventName === 'token') {
+      onToken?.(data.content ?? '');
+    } else if (eventName === 'tool_start') {
       onToolStart?.(data.command);
-    } else if (data.type === 'tool_output') {
+    } else if (eventName === 'tool_output') {
       onToolOutput?.(data.result);
-    } else if (data.type === 'done') {
-      ws.close();
+    } else if (eventName === 'done') {
       onDone?.();
-    } else if (data.type === 'error') {
-      onError?.(new Error(data.content));
-      ws.close();
+      close();
+    } else if (eventName === 'error') {
+      onError?.(new Error(data.content || 'Streaming error'));
+      close();
     }
   };
 
-  ws.onerror = (err) => {
-    onError?.(err);
-  };
+  (async () => {
+    try {
+      const res = await fetch(`${BASE_URL}/chat/stream`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: sessionId, message, attachment }),
+        signal: controller.signal,
+      });
 
-  return { close: () => ws.close() };
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || `Server error: ${res.status}`);
+      }
+
+      if (!res.body) {
+        throw new Error('Streaming not supported in this environment');
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder('utf-8');
+      let buffer = '';
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        // SSE events are separated by a blank line
+        let idx;
+        while ((idx = buffer.indexOf('\n\n')) !== -1) {
+          const block = buffer.slice(0, idx);
+          buffer = buffer.slice(idx + 2);
+          if (block.trim()) parseEventBlock(block);
+        }
+      }
+    } catch (err) {
+      if (err?.name === 'AbortError') return; // user pressed Stop
+      onError?.(err);
+    } finally {
+      close();
+    }
+  })();
+
+  return { close };
 }
 
 /**

@@ -4,11 +4,11 @@ FastAPI routes for standard Chat POST and WebSocket streaming.
 """
 import json
 import logging
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException
-from starlette.websockets import WebSocketState
+from fastapi import APIRouter, HTTPException, Request
+from starlette.responses import StreamingResponse
 from app.models.schemas import (
     ChatRequest, ChatResponse, HistoryResponse, MessageRecord,
-    DeleteResponse, SessionSummary, RenameRequest
+    DeleteResponse, SessionSummary, RenameRequest, ChatStreamRequest
 )
 from app.graph.agent import get_agent_response, get_app
 from app.db.database import (
@@ -142,158 +142,126 @@ async def open_terminal_endpoint():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.websocket("/ws/{session_id}")
-async def websocket_chat(websocket: WebSocket, session_id: str):
-    """WebSocket endpoint for token-by-token streaming using LangGraph."""
-    await websocket.accept()
-    try:
-        app = await get_app()
-        while True:
-            data = await websocket.receive_text()
-            payload = json.loads(data)
-            user_message = payload.get("message")
-            attachment = payload.get("attachment")
+def _sse(event: str, data: dict) -> str:
+    # SSE format: https://html.spec.whatwg.org/multipage/server-sent-events.html
+    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
-            if not user_message:
-                continue
-            
-            # Incorporate file attachment context
-            image_content = None
-            if attachment and attachment.get("name") and attachment.get("content"):
-                file_name = attachment["name"]
-                file_content = attachment["content"]
-                mime_type = attachment.get("mime_type", "text/plain")
 
-                if mime_type.startswith("image/"):
-                    # For images, we will pass them as multi-modal content
-                    image_content = {
-                        "type": "image_url",
-                        "image_url": {"url": file_content} # content is expected to be data URL
-                    }
-                else:
-                    # For text files, prepend to message
-                    user_message = (
-                        f"[Attached File: {file_name}]\n"
-                        f"--- FILE CONTENT START ---\n"
-                        f"{file_content}\n"
-                        f"--- FILE CONTENT END ---\n\n"
-                        f"{user_message}"
-                    )
+@router.post("/chat/stream")
+async def chat_stream_endpoint(request: Request, req: ChatStreamRequest):
+    """HTTP SSE endpoint for token-by-token streaming using LangGraph."""
 
-            # Auto-create conversation on first message
-            # Bug #8 fix: use original user text for title (not attachment-prepended version)
-            original_user_text = payload.get("message", "")
-            if await is_first_message(session_id):
-                await create_conversation(session_id, make_title(original_user_text or user_message))
+    async def event_generator():
+        session_id = req.session_id
+        user_message = req.message
+        attachment = req.attachment.model_dump() if req.attachment else None
 
-            config = {"configurable": {"thread_id": session_id}}
-            
-            # Construct content for HumanMessage
-            if image_content:
-                message_content = [
-                    {"type": "text", "text": user_message},
-                    image_content
-                ]
+        # Incorporate file attachment context
+        image_content = None
+        if attachment and attachment.get("name") and attachment.get("content"):
+            file_name = attachment["name"]
+            file_content = attachment["content"]
+            mime_type = attachment.get("mime_type", "text/plain") or "text/plain"
+
+            if mime_type.startswith("image/"):
+                # For images, we pass multi-modal content
+                image_content = {
+                    "type": "image_url",
+                    "image_url": {"url": file_content},  # expected to be a data URL
+                }
             else:
-                message_content = user_message
+                # For text files, prepend to message
+                user_message = (
+                    f"[Attached File: {file_name}]\n"
+                    f"--- FILE CONTENT START ---\n"
+                    f"{file_content}\n"
+                    f"--- FILE CONTENT END ---\n\n"
+                    f"{user_message}"
+                )
 
-            input_messages = {"messages": [HumanMessage(content=message_content)]}
-            await save_message(session_id, "user", user_message, attachment if image_content else None)
+        # Auto-create conversation on first message
+        original_user_text = req.message or ""
+        if await is_first_message(session_id):
+            await create_conversation(session_id, make_title(original_user_text or user_message))
 
-            # --- Streaming Loop ---
-            full_response: str = ""
-            max_retries = 2
-            
-            for attempt in range(max_retries):
-                try:
-                    # On retry (attempt > 0), pass None to tell LangGraph to resume from checkpointer
-                    stream_inputs = input_messages if attempt == 0 else None
-                    async for chunk, metadata in app.astream(
-                        stream_inputs,
-                        config,
-                        stream_mode="messages"
-                    ):
-                        # Bug #6 fix: use WebSocketState enum instead of magic number
-                        if websocket.client_state != WebSocketState.CONNECTED:
-                            break
+        # Construct content for HumanMessage
+        if image_content:
+            message_content = [{"type": "text", "text": user_message}, image_content]
+        else:
+            message_content = user_message
 
-                        content = getattr(chunk, "content", None)
-                        chunk_type = chunk.__class__.__name__
+        input_messages = {"messages": [HumanMessage(content=message_content)]}
+        await save_message(session_id, "user", user_message, attachment if image_content else None)
 
-                        # 1. Handle Text Tokens
-                        if chunk_type in ("AIMessageChunk", "AIMessage") and isinstance(content, str) and content:
-                            full_response += content
-                            await websocket.send_text(json.dumps({
-                                "type": "token",
-                                "content": content
-                            }))
-                        
-                        # 2. Handle Tool Activations
-                        tool_call_chunks = getattr(chunk, "tool_call_chunks", None)
-                        if tool_call_chunks:
-                            for tc in tool_call_chunks:
-                                if tc.get("name"):
-                                    await websocket.send_text(json.dumps({
-                                        "type": "tool_start",
-                                        "command": tc["name"]
-                                    }))
-                        
-                        # 3. Handle Tool Results
-                        if chunk_type in ("ToolMessageChunk", "ToolMessage") and getattr(chunk, "name", None):
-                            await websocket.send_text(json.dumps({
-                                "type": "tool_output",
-                                "result": str(content)
-                            }))
-                            
-                    # If stream finished successfully without error, break retry loop
-                    break
+        app = await get_app()
+        config = {"configurable": {"thread_id": session_id}}
 
-                except Exception as stream_err:
-                    error_msg = str(stream_err)
-                    if "thought_signature" in error_msg and attempt < max_retries - 1:
-                        logger.warning(f"Resiliently retrying stream after thought_signature (attempt {attempt + 1})...")
-                        continue
-                    else:
-                        logger.error(f"Stream interrupted: {error_msg}")
-                        
-                        # Custom suggestion for 401 unauthorized
-                        if "unauthorized" in error_msg.lower() or "401" in error_msg:
-                            suggestion = (
-                                "\n\n**Note:** This 'unauthorized' error often happens if your Base URL is wrong. "
-                                "If you are using SiliconFlow, ensure your provider is 'OpenAI-Compatible' and "
-                                "the URL is `https://api.siliconflow.cn/v1`. "
-                                "Do NOT use `https://ollama.com` as an API URL."
-                            )
-                            await websocket.send_text(json.dumps({"type": "error", "content": error_msg + suggestion}))
-                        else:
-                            await websocket.send_text(json.dumps({"type": "error", "content": error_msg}))
-                        break
+        full_response: str = ""
+        max_retries = 2
 
-            # --- Post-Stream Completion ---
-            await save_message(session_id, "assistant", full_response.strip())
-            await websocket.send_text(json.dumps({"type": "done"}))
-
-    except WebSocketDisconnect:
-        logger.info(f"WebSocket disconnected for session {session_id}")
-    except Exception as e:
-        error_msg = str(e)
-        # Suppress benign streaming errors from LLM providers
-        if "thought_signature" in error_msg:
-            # We ignore this error because Llama tool streaming with Ollama sometimes throws it
-            # But we must NOT return/break here, otherwise the chain stops and no final answer is given
-            logger.warning(f"Ignored Ollama thought_signature parsing error: {error_msg}")
-            # Try to send a done message gracefully just in case this actually was the end
+        for attempt in range(max_retries):
             try:
-                await websocket.send_text(json.dumps({"type": "done"}))
-            except:
-                pass
-            return
+                stream_inputs = input_messages if attempt == 0 else None
+                async for chunk, metadata in app.astream(
+                    stream_inputs,
+                    config,
+                    stream_mode="messages",
+                ):
+                    if await request.is_disconnected():
+                        logger.info("SSE client disconnected; stopping stream")
+                        return
 
-        logger.error(f"WebSocket error: {error_msg}")
-        try:
-            await websocket.send_text(json.dumps({
-                "type": "error",
-                "content": error_msg
-            }))
-        except:
-            pass
+                    content = getattr(chunk, "content", None)
+                    chunk_type = chunk.__class__.__name__
+
+                    # 1) Text tokens
+                    if chunk_type in ("AIMessageChunk", "AIMessage") and isinstance(content, str) and content:
+                        full_response += content
+                        yield _sse("token", {"content": content})
+
+                    # 2) Tool activations
+                    tool_call_chunks = getattr(chunk, "tool_call_chunks", None)
+                    if tool_call_chunks:
+                        for tc in tool_call_chunks:
+                            if tc.get("name"):
+                                yield _sse("tool_start", {"command": tc["name"]})
+
+                    # 3) Tool results
+                    if chunk_type in ("ToolMessageChunk", "ToolMessage") and getattr(chunk, "name", None):
+                        yield _sse("tool_output", {"result": str(content)})
+
+                break
+
+            except Exception as stream_err:
+                error_msg = str(stream_err)
+                if "thought_signature" in error_msg and attempt < max_retries - 1:
+                    logger.warning(
+                        f"Resiliently retrying stream after thought_signature (attempt {attempt + 1})..."
+                    )
+                    continue
+
+                logger.error(f"Stream interrupted: {error_msg}")
+                if "unauthorized" in error_msg.lower() or "401" in error_msg:
+                    suggestion = (
+                        "\n\n**Note:** This 'unauthorized' error often happens if your Base URL is wrong. "
+                        "If you are using SiliconFlow, ensure your provider is 'OpenAI-Compatible' and "
+                        "the URL is `https://api.siliconflow.cn/v1`. "
+                        "Do NOT use `https://ollama.com` as an API URL."
+                    )
+                    yield _sse("error", {"content": error_msg + suggestion})
+                else:
+                    yield _sse("error", {"content": error_msg})
+                return
+
+        await save_message(session_id, "assistant", full_response.strip())
+        yield _sse("done", {})
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
