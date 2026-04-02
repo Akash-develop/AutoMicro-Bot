@@ -6,6 +6,10 @@ authors = ["AutoMicro <automicro@local>"]
 readme = "README.md"
 package-mode = false
 
+# Older Poetry versions may ignore `package-mode = false` and still try to
+# install the project as a package. Explicitly declare what to package.
+packages = [{ include = "app" }]
+
 [tool.poetry.dependencies]
 python = "^3.11"
 fastapi = "^0.115.0"
@@ -37,4 +41,4 @@ build-backend = "poetry.core.masonry.api"
 # Bug #9 fix: scripts must be in [tool.poetry.scripts], not [build-system]
 # Now `poetry run start` will start the uvicorn server
 [tool.poetry.scripts]
-start = "uvicorn:run"
+start = "app.main:start"

@@ -45,5 +45,8 @@ async def startup_event():
 async def root():
     return {"message": "AutoMicro-Bot API is running", "status": "online"}
 
-if __name__ == "__main__":
+def start():
     uvicorn.run("app.main:app", host="127.0.0.1", port=8000, reload=True)
+
+if __name__ == "__main__":
+    start()

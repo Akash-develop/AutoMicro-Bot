@@ -37,7 +37,12 @@ cd front-end
 npm install
 
 # Start Tauri dev (starts Vite automatically)
-npm run tauri dev
+# Note: Dev does NOT require bundling the backend sidecar binary.
+npm run tauri:dev
+
+# Production build (bundles backend sidecar)
+# This requires the sidecar binary to exist and be prepared during build.
+npm run tauri:build
 
 
 Common issues
