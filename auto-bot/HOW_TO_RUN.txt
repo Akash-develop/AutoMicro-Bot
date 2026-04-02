@@ -51,3 +51,18 @@ Common issues
 - If you changed ports: frontend has BASE_URL hardcoded in:
   front-end/src/api/chat.js and front-end/src/api/settings.js
 
+
+UI automation stack (optional)
+------------------------------
+- Enable `run_ui_automation` and per-layer toggles in Settings (Permissions).
+- DOM layer: start Chrome with remote debugging, e.g.
+  /Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome --remote-debugging-port=9222
+  (default port 9222; override with CHROME_DEBUG_PORT).
+- AX / Input: build the Swift helper once:
+  cd native/AutomationHelper && swift build -c release
+  Grant Accessibility (and Screen Recording for vision) in System Settings.
+- DOM service deps: cd automation-dom && npm install
+- Vision OCR: install Tesseract on the Mac (brew install tesseract) for pytesseract.
+- JSON schemas (single source of truth): auto-bot/schema/automation/
+- E2E demo scripts: auto-bot/e2e-demos/
+

@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Automation DOM demo</title>
+</head>
+<body>
+  <h1>AutoMicro DOM fixture</h1>
+  <button type="button" id="submit-demo" data-automation-label="Submit">Submit</button>
+  <p id="status"></p>
+  <script>
+    document.getElementById("submit-demo").onclick = function () {
+      document.getElementById("status").textContent = "clicked";
+    };
+  </script>
+</body>
+</html>

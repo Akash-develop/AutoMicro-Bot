@@ -1,0 +1,13 @@
+{
+  "": {
+    "dependencies": "/Users/akash/Personalproject/AutoMicro-bot/native/AutomationHelper/.build/arm64-apple-macosx/release/AutomationHelper.build/AutomationHelper.d",
+    "object": "/Users/akash/Personalproject/AutoMicro-bot/native/AutomationHelper/.build/arm64-apple-macosx/release/AutomationHelper.build/AutomationHelper.o",
+    "swift-dependencies": "/Users/akash/Personalproject/AutoMicro-bot/native/AutomationHelper/.build/arm64-apple-macosx/release/AutomationHelper.build/master.swiftdeps"
+  },
+  "/Users/akash/Personalproject/AutoMicro-bot/native/AutomationHelper/Sources/AutomationHelper/main.swift": {
+    "object": "/Users/akash/Personalproject/AutoMicro-bot/native/AutomationHelper/.build/arm64-apple-macosx/release/AutomationHelper.build/main.swift.o",
+    "swiftmodule": "/Users/akash/Personalproject/AutoMicro-bot/native/AutomationHelper/.build/arm64-apple-macosx/release/AutomationHelper.build/main~partial.swiftmodule",
+    "swift-dependencies": "/Users/akash/Personalproject/AutoMicro-bot/native/AutomationHelper/.build/arm64-apple-macosx/release/AutomationHelper.build/main.swiftdeps",
+    "diagnostics": "/Users/akash/Personalproject/AutoMicro-bot/native/AutomationHelper/.build/arm64-apple-macosx/release/AutomationHelper.build/main.dia"
+  }
+}

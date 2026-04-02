@@ -4,7 +4,7 @@ Pydantic v2 request/response models
 """
 from pydantic import BaseModel, Field
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 
 
 class ChatRequest(BaseModel):
@@ -24,6 +24,7 @@ class MessageRecord(BaseModel):
     role: str  # "user" | "assistant"
     content: str
     timestamp: datetime
+    attachment: Optional[dict[str, Any]] = None
 
 
 class HistoryResponse(BaseModel):

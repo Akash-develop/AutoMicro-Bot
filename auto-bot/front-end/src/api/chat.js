@@ -124,7 +124,7 @@ export function streamMessage(sessionId, message, onToken, onToolStart, onToolOu
  * Fetch chat history for a session.
  */
 export async function getHistory(sessionId) {
-  const res = await fetch(`${BASE_URL}/history/${sessionId}`);
+  const res = await fetch(`${BASE_URL}/history/${encodeURIComponent(sessionId)}`);
   if (!res.ok) throw new Error(`Failed to load history: ${res.status}`);
   return res.json();
 }
@@ -135,7 +135,7 @@ export async function getHistory(sessionId) {
  * conversation. Now calls the correct /history/{id}/messages endpoint.
  */
 export async function clearHistory(sessionId) {
-  const res = await fetch(`${BASE_URL}/history/${sessionId}/messages`, {
+  const res = await fetch(`${BASE_URL}/history/${encodeURIComponent(sessionId)}/messages`, {
     method: 'DELETE',
   });
   if (!res.ok) throw new Error(`Failed to clear history: ${res.status}`);
@@ -155,7 +155,7 @@ export async function listSessions() {
  * Rename a conversation.
  */
 export async function renameConversation(sessionId, title) {
-  const res = await fetch(`${BASE_URL}/conversations/${sessionId}`, {
+  const res = await fetch(`${BASE_URL}/conversations/${encodeURIComponent(sessionId)}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ title }),
@@ -168,7 +168,7 @@ export async function renameConversation(sessionId, title) {
  * Delete a conversation and all its messages.
  */
 export async function deleteConversation(sessionId) {
-  const res = await fetch(`${BASE_URL}/history/${sessionId}`, {
+  const res = await fetch(`${BASE_URL}/history/${encodeURIComponent(sessionId)}`, {
     method: 'DELETE',
   });
   if (!res.ok) throw new Error(`Failed to delete conversation: ${res.status}`);

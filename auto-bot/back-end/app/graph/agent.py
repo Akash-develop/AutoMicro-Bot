@@ -24,6 +24,7 @@ from app.graph.tools.system_actions import sleep_system
 from app.graph.tools.file_actions import create_folder, create_file
 from app.graph.tools.excel_actions import create_excel_with_sample_data
 from app.graph.tools.memory_actions import save_long_term_memory
+from app.graph.tools.ui_automation import run_ui_automation
 from app.db.chroma import search_memory
 
 load_dotenv()
@@ -63,7 +64,8 @@ tools = [
     create_folder,
     create_file,
     create_excel_with_sample_data,
-    save_long_term_memory
+    save_long_term_memory,
+    run_ui_automation,
 ]
 
 def build_system_prompt(state: MessagesState) -> list:

@@ -38,14 +38,17 @@ export default function App() {
   const [isAppLoading, setIsAppLoading] = useState(true);
   const [theme, setTheme] = useState(localStorage.getItem('automicro_theme') || 'dark');
   const activeStream = useRef(null);
+  const historyRequestId = useRef(0);
 
   const appWindow = getCurrentWindow();
 
   // Load history if it's an existing session
   useEffect(() => {
+    const reqId = ++historyRequestId.current;
     const loadSessionHistory = async () => {
       try {
         const history = await getHistory(sessionId);
+        if (historyRequestId.current !== reqId) return;
         setMessages(history.map(m => ({
           id: `msg_${m.id}`,
           role: m.role,
@@ -54,10 +57,9 @@ export default function App() {
           timestamp: m.timestamp
         })));
       } catch (err) {
+        if (historyRequestId.current !== reqId) return;
         console.error("Failed to load history:", err);
-      } finally {
-        // Initial load is handled by the useEffect above
-        // We'll use a unified timer effect for isAppLoading
+        setMessages([]);
       }
     };
     loadSessionHistory();
@@ -198,6 +200,15 @@ export default function App() {
     return msg;
   };
 
+  const createToolCall = (toolName) => ({
+    id: `tool_${crypto.randomUUID()}`,
+    toolName,
+    status: 'running', // running | completed | aborted | error
+    startedAt: new Date().toISOString(),
+    endedAt: null,
+    output: '',
+  });
+
   const handleSend = useCallback((text, attachment = null) => {
     addMessage('user', text, attachment);
     setIsTyping(true);
@@ -207,7 +218,7 @@ export default function App() {
       id: msgId,
       role: 'assistant',
       content: '',
-      commands: [],
+      commands: [], // tool calls
       timestamp: new Date().toISOString()
     }]);
     setNewMsgId(msgId);
@@ -229,7 +240,7 @@ export default function App() {
       (command) => {
         setMessages((prev) => prev.map(m => {
           if (m.id === msgId) {
-            return { ...m, commands: [...(m.commands || []), { command, result: null }] };
+            return { ...m, commands: [...(m.commands || []), createToolCall(command)] };
           }
           return m;
         }));
@@ -240,7 +251,24 @@ export default function App() {
         setMessages((prev) => prev.map(m => {
           if (m.id === msgId && m.commands && m.commands.length > 0) {
             const newCommands = [...m.commands];
-            newCommands[newCommands.length - 1].result = result;
+            // Update the most recent running tool call; if none, fall back to last
+            let idx = -1;
+            for (let i = newCommands.length - 1; i >= 0; i--) {
+              if (newCommands[i]?.status === 'running') {
+                idx = i;
+                break;
+              }
+            }
+            if (idx === -1) idx = newCommands.length - 1;
+
+            const prevCmd = newCommands[idx] || {};
+            const output = (prevCmd.output || '') + (prevCmd.output ? '\n' : '') + String(result ?? '');
+            newCommands[idx] = {
+              ...prevCmd,
+              output,
+              status: 'completed',
+              endedAt: new Date().toISOString(),
+            };
             return { ...m, commands: newCommands };
           }
           return m;
@@ -253,6 +281,25 @@ export default function App() {
       },
       (err) => {
         setMessages((prev) => prev.map(m => m.id === msgId ? { ...m, content: m.content + `\n⚠️ Error: ${err.message}` } : m));
+        setMessages((prev) => prev.map(m => {
+          if (m.id !== msgId || !m.commands?.length) return m;
+          const newCommands = [...m.commands];
+          let idx = -1;
+          for (let i = newCommands.length - 1; i >= 0; i--) {
+            if (newCommands[i]?.status === 'running') {
+              idx = i;
+              break;
+            }
+          }
+          if (idx === -1) return m;
+          newCommands[idx] = {
+            ...newCommands[idx],
+            status: 'error',
+            endedAt: new Date().toISOString(),
+            output: (newCommands[idx].output || '') + (newCommands[idx].output ? '\n' : '') + `⚠️ Error: ${err.message}`,
+          };
+          return { ...m, commands: newCommands };
+        }));
         setIsTyping(false);
       },
       attachment
@@ -273,8 +320,10 @@ export default function App() {
           if (m.id === newMsgId && m.commands) {
             return {
               ...m,
-              commands: m.commands.map(cmd => 
-                cmd.result === null ? { ...cmd, result: 'Stopped' } : cmd
+              commands: m.commands.map(cmd =>
+                cmd.status === 'running'
+                  ? { ...cmd, status: 'aborted', endedAt: new Date().toISOString() }
+                  : cmd
               )
             };
           }
@@ -312,6 +361,13 @@ export default function App() {
   }, []);
 
   const handleSelectSession = useCallback((id) => {
+    if (activeStream.current) {
+      activeStream.current.close();
+      activeStream.current = null;
+    }
+    setIsTyping(false);
+    setNewMsgId(null);
+    setMessages([]);
     setSessionId(id);
     localStorage.setItem('automicro_session', id);
     setIsDrawerOpen(false);

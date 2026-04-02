@@ -206,8 +206,12 @@ async def get_history(session_id: str, limit: int = 50):
                 if item.get("attachment"):
                     try:
                         item["attachment"] = json.loads(item["attachment"])
-                    except:
+                    except Exception:
                         item["attachment"] = None
+                else:
+                    item["attachment"] = None
+                # Required by API response model (MessageRecord.session_id)
+                item["session_id"] = session_id
                 history.append(item)
             return history
 

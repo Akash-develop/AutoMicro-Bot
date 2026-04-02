@@ -113,13 +113,34 @@ body,
 }
 
 .message-bubble {
-  max-width: 88%;
+  max-width: 65%;
   padding: 12px 16px;
   border-radius: 20px;
   font-size: 13.5px;
   line-height: 1.6;
   position: relative;
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.2);
+}
+
+/* Same width cap as .message-bubble so tool/terminal strip aligns with assistant bubble (65%) */
+.assistant-message-stack {
+  max-width: 65%;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  align-self: flex-start;
+  box-sizing: border-box;
+}
+
+/* Bubble inside stack already constrained by stack width */
+.assistant-message-stack .message-bubble.bubble-bot {
+  max-width: 100%;
+}
+
+.tool-calls-above-bubble {
+  width: 100%;
+  min-width: 0;
 }
 
 .bubble-user {
@@ -484,7 +505,11 @@ body,
 }
 
 .normal-layout-container .message-bubble {
-  max-width: 85%;
+  max-width: 65%;
+}
+
+.normal-layout-container .assistant-message-stack {
+  max-width: 65%;
 }
 
 .normal-layout-container .bubble-user {
@@ -796,9 +821,17 @@ body,
 }
 
 .mini-view .message-bubble {
-  max-width: 90%;
+  max-width: 65%;
   font-size: 13px;
   padding: 10px 14px;
+}
+
+.mini-view .assistant-message-stack {
+  max-width: 65%;
+}
+
+.mini-view .assistant-message-stack .message-bubble {
+  max-width: 100%;
 }
 
 .mini-view .titlebar h1 {
@@ -1286,4 +1319,263 @@ body,
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+/* Cursor-like tool call blocks */
+.tool-calls-list {
+  width: 100%;
+  max-width: 100%;
+}
+
+.tool-call-block {
+  border-radius: var(--glass-radius);
+  border: 1px solid var(--glass-border);
+  background: var(--input-bg);
+  overflow: hidden;
+  backdrop-filter: blur(8px);
+}
+
+.tool-call-block__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.tool-call-block__header:hover {
+  background: rgba(99, 102, 241, 0.08);
+}
+
+.tool-call-block__chevron {
+  flex-shrink: 0;
+  width: 14px;
+  font-size: 9px;
+  opacity: 0.65;
+}
+
+.tool-call-block__pulse {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex-shrink: 0;
+  animation: tool-call-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes tool-call-pulse {
+  0%, 100% { opacity: 0.35; transform: scale(0.9); }
+  50% { opacity: 1; transform: scale(1); }
+}
+
+.tool-call-block__icon {
+  flex-shrink: 0;
+  color: var(--online-green);
+}
+
+.tool-call-block__icon--warn {
+  color: #ef4444;
+}
+
+.tool-call-block__icon--err {
+  color: #f97316;
+}
+
+.tool-call-block__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-main);
+  font-size: 11px;
+}
+
+.tool-call-block__status {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.85;
+}
+
+.tool-call-block__status--running {
+  color: var(--accent);
+}
+
+.tool-call-block__status--done {
+  color: var(--online-green);
+}
+
+.tool-call-block__status--aborted {
+  color: #ef4444;
+}
+
+.tool-call-block__status--error {
+  color: #f97316;
+}
+
+.tool-call-block__body {
+  padding: 0 10px 10px 32px;
+  border-top: 1px solid var(--glass-border);
+  animation: fade-in 0.2s ease-out;
+}
+
+.tool-call-block__cmd {
+  font-size: 11px;
+  margin-top: 8px;
+  margin-bottom: 6px;
+  opacity: 0.95;
+}
+
+.tool-call-block__output {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.25);
+  font-size: 11px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 220px;
+  overflow-y: auto;
+  color: var(--text-main);
+}
+
+:root[data-theme='light'] .tool-call-block__output {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.tool-call-block__output--muted {
+  white-space: normal;
+  opacity: 0.55;
+}
+
+/* macOS flat terminal (execute_terminal_command) */
+.tool-call-block--terminal-tool .tool-call-block__body--mac-terminal {
+  padding: 0;
+  border-top: none;
+}
+
+.mac-terminal {
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid rgba(0, 0, 0, 0.45);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+:root[data-theme='light'] .mac-terminal {
+  border-color: rgba(0, 0, 0, 0.12);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+.mac-terminal__titlebar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  height: 28px;
+  background: linear-gradient(180deg, #5c5c5c 0%, #4a4a4a 100%);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.35);
+}
+
+.mac-terminal__dots {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.mac-terminal__dot {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25);
+}
+
+.mac-terminal__dot--close {
+  background: #ff5f57;
+  border: 1px solid #e0443e;
+}
+
+.mac-terminal__dot--min {
+  background: #febc2e;
+  border: 1px solid #dba524;
+}
+
+.mac-terminal__dot--max {
+  background: #28c840;
+  border: 1px solid #1fa233;
+}
+
+.mac-terminal__title {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.55);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  user-select: none;
+}
+
+.mac-terminal__canvas {
+  background: #262626;
+  padding: 12px 14px 14px;
+  min-height: 72px;
+}
+
+.mac-terminal__prompt {
+  font-size: 12px;
+  line-height: 1.5;
+  margin-bottom: 8px;
+  user-select: none;
+}
+
+.mac-terminal__prompt-user {
+  color: #c678dd;
+}
+
+.mac-terminal__prompt-path {
+  color: #e8e8e8;
+}
+
+.mac-terminal__prompt-dollar {
+  color: #e5c07b;
+}
+
+.mac-terminal__output {
+  margin: 0;
+  padding: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #e8e8e8;
+  max-height: 240px;
+  overflow-y: auto;
+  background: transparent;
+}
+
+.mac-terminal__output--muted {
+  color: rgba(232, 232, 232, 0.45);
+  white-space: normal;
+}
+
+.mac-terminal__canvas ::-webkit-scrollbar {
+  width: 6px;
+}
+
+.mac-terminal__canvas ::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 3px;
 }

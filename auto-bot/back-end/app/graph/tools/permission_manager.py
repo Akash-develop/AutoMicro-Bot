@@ -20,6 +20,12 @@ BUILTIN_TOOLS = {
     "create_file": True,
     "create_excel_with_sample_data": True,
     "save_long_term_memory": True,
+    "run_ui_automation": False,
+    "automation_layer_dom": True,
+    "automation_layer_ax": True,
+    "automation_layer_vision": True,
+    "automation_layer_input": True,
+    "automation_layer_script": True,
 }
 
 # In-memory cache for permissions

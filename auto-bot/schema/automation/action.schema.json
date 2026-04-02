@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://automicro.bot/schema/automation/action.schema.json",
+  "title": "StructuredAction",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "action", "target", "confidence", "payload"],
+  "properties": {
+    "schema_version": { "type": "string", "const": "1.0" },
+    "action": {
+      "type": "string",
+      "enum": ["click", "type", "scroll", "focus", "press", "wait"]
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "value"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["text", "role", "selector", "coords", "xpath", "label"]
+        },
+        "value": { "type": "string" }
+      }
+    },
+    "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+    "payload": { "type": "object" }
+  }
+}

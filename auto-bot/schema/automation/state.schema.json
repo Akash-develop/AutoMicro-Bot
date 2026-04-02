@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://automicro.bot/schema/automation/state.schema.json",
+  "title": "AutomationStateSnapshot",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "frontApp",
+    "windowTitle",
+    "lastAction",
+    "status",
+    "retryCount",
+    "layerAttempts"
+  ],
+  "properties": {
+    "schema_version": { "type": "string", "const": "1.0" },
+    "frontApp": { "type": "string" },
+    "windowTitle": { "type": "string" },
+    "lastAction": { "type": "string" },
+    "status": {
+      "type": "string",
+      "enum": ["idle", "running", "success", "failed", "pending_confirmation"]
+    },
+    "retryCount": { "type": "integer", "minimum": 0 },
+    "layerAttempts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["layer", "at", "outcome"],
+        "properties": {
+          "layer": { "type": "string" },
+          "at": { "type": "string" },
+          "outcome": { "type": "string" },
+          "confidence": { "type": "number" }
+        }
+      }
+    }
+  }
+}
