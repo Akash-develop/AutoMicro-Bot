@@ -1,20 +1,18 @@
 /**
  * src/components/SettingsDrawer.jsx
- * Right-to-left drawer for managing agent tool permissions and memories.
+ * Right-to-left drawer for managing agent tool permissions and LLM settings.
  */
 import { useState, useEffect } from 'react';
 import {
     getPermissions, updatePermissions, deletePermission,
-    getMemories, deleteMemory, clearMemories,
     getLLMSettings, updateLLMSettings, getLLMHistory, activateLLMConfig, deleteLLMHistory,
     getAvailableModels
 } from '../api/settings.js';
 
 export default function SettingsDrawer({ isOpen, onClose, theme, toggleTheme }) {
-    const [activeMenu, setActiveMenu] = useState('main'); // 'main', 'permissions', 'memory'
+    const [activeMenu, setActiveMenu] = useState('main'); // 'main', 'permissions', 'llm', ...
     const [permissions, setPermissions] = useState({});
     const [lockedTools, setLockedTools] = useState([]);
-    const [memories, setMemories] = useState([]);
     const [loading, setLoading] = useState(true);
     const [editingTool, setEditingTool] = useState(null);
     const [editValue, setEditValue] = useState("");
@@ -47,54 +45,10 @@ export default function SettingsDrawer({ isOpen, onClose, theme, toggleTheme }) 
         if (newLockState) setEditingTool(null);
     };
 
-    const BUILTIN_TOOLS = [
-        "execute_terminal_command",
-        "open_url",
-        "search_web",
-        "sleep_system",
-        "create_folder",
-        "create_file",
-        "create_excel_with_sample_data",
-        "run_ui_automation",
-        "automation_layer_dom",
-        "automation_layer_ax",
-        "automation_layer_vision",
-        "automation_layer_input",
-        "automation_layer_script",
-        "get_desktop_state",
-        "control_app",
-        "mouse_click",
-        "keyboard_type",
-        "move_mouse",
-        "scroll_mouse",
-        "drag_mouse",
-        "press_keys",
-        "scrape_web",
-        "wait"
-    ];
+    const BUILTIN_TOOLS = ["execute_terminal_command"];
 
     const TOOL_LABELS = {
-        "search_web": "Internet Search",
         "execute_terminal_command": "System Terminal",
-        "get_desktop_state": "Desktop State",
-        "control_app": "App Control",
-        "mouse_click": "Mouse Click",
-        "keyboard_type": "Keyboard Type",
-        "move_mouse": "Move Mouse",
-        "scroll_mouse": "Scroll Mouse",
-        "drag_mouse": "Drag Mouse",
-        "press_keys": "Press Keys",
-        "scrape_web": "Scrape Web",
-        "wait": "Wait",
-        "run_ui_automation": "UI Automation (orchestrator)",
-        "automation_layer_dom": "Automation: DOM (Chrome CDP)",
-        "automation_layer_ax": "Automation: Accessibility (AX)",
-        "automation_layer_vision": "Automation: Vision + screen",
-        "automation_layer_input": "Automation: Mouse/keyboard (CG)",
-        "automation_layer_script": "Automation: AppleScript layer",
-        "get_active_tab_details": "Active Tab Info",
-        "get_tab_content": "Read Page Text",
-        "run_browser_js": "Run Browser JS"
     };
 
     useEffect(() => {
@@ -109,18 +63,6 @@ export default function SettingsDrawer({ isOpen, onClose, theme, toggleTheme }) 
                     setLockedTools(lTools);
                 })
                 .catch(err => console.error("Failed to fetch permissions", err))
-                .finally(() => setLoading(false));
-        }
-    }, [isOpen, activeMenu]);
-
-    useEffect(() => {
-        if (isOpen && activeMenu === 'memory') {
-            setLoading(true);
-            getMemories()
-                .then(data => {
-                    setMemories(data.memories || []);
-                })
-                .catch(err => console.error("Failed to fetch memories", err))
                 .finally(() => setLoading(false));
         }
     }, [isOpen, activeMenu]);
@@ -170,25 +112,6 @@ export default function SettingsDrawer({ isOpen, onClose, theme, toggleTheme }) 
             setAvailableModels([]);
         }
     }, [isOpen, activeMenu, activeTab, llmSettings.provider, llmSettings.base_url, llmSettings.api_key]);
-
-    const handleDeleteMemory = async (id) => {
-        try {
-            await deleteMemory(id);
-            setMemories(prev => prev.filter(m => m.id !== id));
-        } catch (err) {
-            console.error("Failed to delete memory", err);
-        }
-    };
-
-    const handleClearMemories = async () => {
-        if (!window.confirm("Are you sure you want to clear all long-term memories?")) return;
-        try {
-            await clearMemories();
-            setMemories([]);
-        } catch (err) {
-            console.error("Failed to clear memories", err);
-        }
-    };
 
     const handleToggle = async (toolName) => {
         const updated = {
@@ -428,15 +351,6 @@ export default function SettingsDrawer({ isOpen, onClose, theme, toggleTheme }) 
                             </button>
 
                             <button
-                                onClick={() => setActiveMenu('memory')}
-                                className="w-100 text-start btn bg-transparent border-0 d-flex justify-content-between align-items-center py-3 px-3 mt-2 hover-bg-secondary"
-                                style={{ transition: 'background-color 0.2s', borderRadius: '8px' }}
-                            >
-                                <span className="fw-medium" style={{ color: 'var(--text-main)' }}>LTM Storage</span>
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-secondary"><polyline points="9 18 15 12 9 6"></polyline></svg>
-                            </button>
-
-                            <button
                                 onClick={() => setActiveMenu('llm')}
                                 className="w-100 text-start btn bg-transparent border-0 d-flex justify-content-between align-items-center py-3 px-3 mt-2 hover-bg-secondary"
                                 style={{ transition: 'background-color 0.2s', borderRadius: '8px' }}
@@ -507,7 +421,7 @@ export default function SettingsDrawer({ isOpen, onClose, theme, toggleTheme }) 
 
                                     {/* Built-in Tools Group */}
                                     <div className="mb-4">
-                                        <div className="text-secondary small fw-bold mb-2 border-bottom border-secondary pb-1">Mac MCP Tools</div>
+                                        <div className="text-secondary small fw-bold mb-2 border-bottom border-secondary pb-1">Terminal</div>
                                         {BUILTIN_TOOLS.map((tool) => {
                                             const isIndividuallyLocked = lockedTools.includes(tool);
                                             const effectiveLocked = isGlobalLocked || isIndividuallyLocked;
@@ -845,46 +759,6 @@ export default function SettingsDrawer({ isOpen, onClose, theme, toggleTheme }) 
                                         ))
                                     )}
                                 </div>
-                            )}
-                        </div>
-                    </>
-                ) : activeMenu === 'memory' ? (
-                    <>
-                        {renderSidebarHeader('LTM Storage', true)}
-
-                        <div className="flex-grow-1 overflow-auto p-3">
-                            {loading ? (
-                                <div className="text-secondary text-center mt-4">Loading...</div>
-                            ) : (
-                                <>
-                                    <div className="d-flex justify-content-end mb-3">
-                                        <button
-                                            onClick={handleClearMemories}
-                                            className="btn btn-sm btn-outline-danger"
-                                            disabled={memories.length === 0}
-                                        >
-                                            Clear All
-                                        </button>
-                                    </div>
-                                    {memories.length === 0 ? (
-                                        <div className="text-secondary text-center mt-4 small">No memories stored.</div>
-                                    ) : (
-                                        memories.map(mem => (
-                                            <div key={mem.id} className="d-flex justify-content-between align-items-start mb-3 border-bottom border-secondary pb-2">
-                                                <span className="small text-break" style={{ fontSize: '13px', flex: 1, marginRight: '10px', color: 'var(--text-main)' }}>
-                                                    {mem.text}
-                                                </span>
-                                                <button
-                                                    onClick={() => handleDeleteMemory(mem.id)}
-                                                    className="btn btn-link p-0 text-danger hover-opacity-100 opacity-75 mt-1"
-                                                    title="Delete Memory"
-                                                >
-                                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6V20a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
-                                                </button>
-                                            </div>
-                                        ))
-                                    )}
-                                </>
                             )}
                         </div>
                     </>

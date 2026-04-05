@@ -1,36 +1,4 @@
 {
     "execute_terminal_command": true,
-    "open_url": true,
-    "search_web": true,
-    "sleep_system": true,
-    "create_folder": true,
-    "create_file": true,
-    "create_excel_with_sample_data": true,
-    "save_long_term_memory": true,
-    "run_ui_automation": false,
-    "automation_layer_dom": true,
-    "automation_layer_ax": true,
-    "automation_layer_vision": true,
-    "automation_layer_input": true,
-    "automation_layer_script": true,
-    "mouse_click": true,
-    "mouse_move": true,
-    "type_text": true,
-    "key_press": true,
-    "take_screenshot": true,
-    "dont_do_user_saw_crash_my_os": false,
-    "dont_do_user_saw_open_chrome": true,
-    "get_desktop_state": true,
-    "control_app": true,
-    "keyboard_type": true,
-    "move_mouse": true,
-    "scroll_mouse": true,
-    "drag_mouse": true,
-    "press_keys": true,
-    "scrape_web": true,
-    "wait": true,
-    "get_screen_size": true,
-    "_locked_tools": [
-        "dont_do_user_saw_crash_my_os"
-    ]
+    "_locked_tools": []
 }

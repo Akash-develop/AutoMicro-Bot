@@ -31,28 +31,6 @@ export async function deletePermission(toolName) {
   return res.json();
 }
 
-export async function getMemories() {
-  const res = await fetch(`${BASE_URL}/settings/memory`);
-  if (!res.ok) throw new Error(`Failed to load memories: ${res.status}`);
-  return res.json();
-}
-
-export async function deleteMemory(id) {
-  const res = await fetch(`${BASE_URL}/settings/memory/${id}`, {
-    method: 'DELETE',
-  });
-  if (!res.ok) throw new Error(`Failed to delete memory: ${res.status}`);
-  return res.json();
-}
-
-export async function clearMemories() {
-  const res = await fetch(`${BASE_URL}/settings/memory`, {
-    method: 'DELETE',
-  });
-  if (!res.ok) throw new Error(`Failed to clear memories: ${res.status}`);
-  return res.json();
-}
-
 export async function getLLMSettings() {
   const res = await fetch(`${BASE_URL}/settings/llm`);
   if (!res.ok) throw new Error(`Failed to load LLM settings: ${res.status}`);

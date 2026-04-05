@@ -1,7 +1,6 @@
 from fastapi import APIRouter
 from typing import Optional
 from app.graph.tools.permission_manager import load_permissions, save_permissions
-from app.db.chroma import get_all_memories, delete_memory, clear_all_memories
 from app.db.database import (
     get_llm_settings, update_llm_settings,
     get_llm_history, save_llm_history, delete_llm_history, activate_llm_config
@@ -45,28 +44,6 @@ async def delete_permission(tool_name: str):
         save_permissions(perms)
         return {"status": "success", "deleted": tool_name}
     return {"status": "error", "message": "Tool not found"}
-
-@router.get("/memory")
-async def get_memories_endpoint():
-    """Retrieve all stored long-term memories."""
-    return {"status": "success", "memories": get_all_memories()}
-
-@router.delete("/memory/{memory_id}")
-async def delete_memory_endpoint(memory_id: str):
-    """Delete a specific long-term memory."""
-    success = delete_memory(memory_id)
-    if success:
-        return {"status": "success", "deleted": memory_id}
-    return {"status": "error", "message": "Failed to delete memory"}
-
-@router.delete("/memory")
-async def clear_all_memories_endpoint():
-    """Clear all long-term memories."""
-    print("DEBUG: DELETE /settings/memory REQUEST RECEIVED")
-    success = clear_all_memories()
-    if success:
-        return {"status": "success", "message": "All memories cleared"}
-    return {"status": "error", "message": "Failed to clear memories"}
 
 # ─── LLM Settings ─────────────────────────────────────────────────────────────
 

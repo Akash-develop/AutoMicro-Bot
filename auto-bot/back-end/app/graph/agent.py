@@ -17,15 +17,7 @@ from app.graph.tools.permission_manager import load_permissions, BUILTIN_TOOLS
 
 logger = logging.getLogger(__name__)
 
-# Tools
 from app.graph.tools.terminal_executor import execute_terminal_command
-from app.graph.tools.browser_actions import open_url, search_web
-from app.graph.tools.system_actions import sleep_system
-from app.graph.tools.file_actions import create_folder, create_file
-from app.graph.tools.excel_actions import create_excel_with_sample_data
-from app.graph.tools.memory_actions import save_long_term_memory
-from app.graph.tools.ui_automation import run_ui_automation
-from app.db.chroma import search_memory
 
 load_dotenv()
 
@@ -56,32 +48,22 @@ def reset_agent():
 
 # ── LangGraph Setup ───────────────────────────────────────
 
-tools = [
-    execute_terminal_command,
-    open_url,
-    search_web,
-    sleep_system,
-    create_folder,
-    create_file,
-    create_excel_with_sample_data,
-    save_long_term_memory,
-    run_ui_automation,
-]
+tools = [execute_terminal_command]
 
 def build_system_prompt(state: MessagesState) -> list:
     base_prompt = (
         "You are AutoMicro-Bot, a helpful, concise AI assistant floating on the user's desktop. "
-        "Keep your responses friendly and brief. You have access to various tools to control the OS and browser. "
-        "Use them when requested.\n"
+        "Keep your responses friendly and brief. Your only action capability is running shell commands "
+        "via the terminal tool when the user needs something done on their machine.\n"
         "IMPORTANT macOS INSTRUCTIONS:\n"
         "- Do NOT use the `airport` command for Wi-Fi, it is removed in modern macOS.\n"
         "- To get the current Wi-Fi SSID, use: `networksetup -getairportnetwork en0`\n"
         "- To get the Wi-Fi password for an SSID, use: `security find-generic-password -D \"802.11 Password\" -w -a \"<SSID_NAME>\"`\n"
         "CRITICAL TOOL INSTRUCTION:\n"
-        "- You may write a short, conversational response before using a tool IF it helps the user understand what you are doing, but it is NOT mandatory if the task is obvious.\n"
-        "- If the user asks for multiple actions (e.g., 'create a folder and a file inside it'), you MUST execute the first tool, wait for the result, and then execute the second tool in the same response chain until all tasks are complete.\n"
+        "- You may write a short, conversational response before running a command if it helps the user understand what you are doing.\n"
+        "- For multiple steps, run one command, read the output, then run the next until the task is complete.\n"
         "INTERRUPTION HANDLING:\n"
-        "- If you are interrupted or the user stops you, do NOT try to explain or 'fix' the situation with more tools or long messages. Simply wait for the next user request."
+        "- If you are interrupted or the user stops you, do NOT try to explain or 'fix' the situation with more commands or long messages. Simply wait for the next user request."
     )
     # Ensure it's a string to avoid Pyre errors on +=
     base_prompt = str(base_prompt)
@@ -110,20 +92,6 @@ def build_system_prompt(state: MessagesState) -> list:
         if custom_rules_disabled:
             base_prompt += "The following actions/rules are STRICTLY FORBIDDEN OR DISABLED (DO NOT under any circumstances perform these):\n- " + "\n- ".join(custom_rules_disabled) + "\n"
             
-    latest_user_msg = ""
-    for msg in reversed(state["messages"]):
-        if getattr(msg, "type", "") == "human" or isinstance(msg, HumanMessage):
-            latest_user_msg = msg.content
-            break
-            
-    if latest_user_msg:
-        try:
-            relevant_memories = search_memory(latest_user_msg, n_results=3)
-            if relevant_memories:
-                base_prompt += "\n\nRELEVANT LONG-TERM MEMORIES (Context for this conversation):\n- " + "\n- ".join(relevant_memories) + "\n"
-        except Exception as e:
-            pass
-
     # We must NOT flatten or strip `tool_calls` from AIMessages for most providers (like OpenAI/Ollama)
     # as it breaks native tool chaining. However, Google Gemini throws a 400 `thought_signature` error
     # if it loads historical tool calls from the SQLite checkpointer that lack proprietary Google kwargs.
