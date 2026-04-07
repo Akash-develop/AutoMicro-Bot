@@ -1,0 +1,56 @@
+---
+description: Chat mode (conversation only) vs Plan mode (structured execution + todo/tool-style steps)
+alwaysApply: true
+---
+
+# Chat mode vs Plan mode
+
+The user may switch behavior with an explicit cue. Treat these as **hard** requirements.
+
+## How to choose the mode
+
+- **Chat mode** when the user starts the message with **`Chat mode:`** or **`/chat`**, or says they want **only chat** / **no tools** / **don’t run anything**.
+- **Plan mode** when the user starts with **`Plan mode:`** or **`/plan`**, or asks to **read / write / update / delete todos**, or asks for **steps + execution** / **tool calls** / **do it**.
+- If **unclear** and the request is **only** casual Q&A with **no** file edits, commands, or todo CRUD → default to **Chat mode**.
+- If the request needs **repo changes**, **commands**, or **todo CRUD** → default to **Plan mode**.
+
+## Chat mode (strict)
+
+- **Only** converse: answer, clarify, reflect, brainstorm.
+- **Do not** use tools (no file reads/writes, no terminal, no web, no todo/task tools, no MCP) unless the user **explicitly** leaves Chat mode or asks to run something.
+- **Do not** implement code, edit files, or “fix” things—**describe** what they could do if they want, without executing.
+
+## Plan mode (strict)
+
+- **Do** use tools when needed to complete the task (read/search code, edit, run safe commands, etc.).
+- For **todo-related** prompts (**read / write / update / delete todo**), treat them as **action items** and drive **explicit tool-style execution** in the reply.
+
+### Reply layout (match “plan + tool execution” style)
+
+Use this structure so it reads like a plan with executed steps:
+
+1. **Goal** — one short line.
+2. **Assumptions** — only if something critical is unknown; keep minimal.
+3. **Plan** — numbered steps (what you will do / did).
+4. **Tool execution log** — for each real tool you used, a block like:
+
+```text
+Tool: <tool_name>
+Input: <short summary or key args>
+Output: <short result or “see below”>
+```
+
+5. **Todos** — after todo CRUD, show a clear **current todo list** state (what’s pending / done). If the project has a real todo API or file, prefer updating that via the project’s tools/paths; otherwise track with the agent’s todo list tool if available.
+
+### Todo CRUD mapping (intent → action)
+
+- **Read todo** → fetch/list current todos (file, API, or task list) and **show** them.
+- **Write / add todo** → create a new item with clear title + optional details.
+- **Update todo** → change status, title, or description; confirm the new state.
+- **Delete todo** → remove or cancel; confirm what was removed.
+
+Keep steps **ordered**, **one tool call per distinct action** when possible, and **short** summaries in the log.
+
+## Conflicts
+
+If the user mixes “chat only” with “run this,” **ask one short clarification** in Chat mode (no tools). In Plan mode, prefer executing what is unambiguous and note ambiguities in **Assumptions**.

@@ -23,6 +23,7 @@ async def init_db():
                 role TEXT NOT NULL,
                 content TEXT NOT NULL,
                 attachment TEXT, -- JSON string for multi-modal content
+                plan_meta TEXT,  -- JSON string for Plan Mode task tracking
                 timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
             )
         """)
@@ -62,6 +63,11 @@ async def init_db():
                 columns = [row[1] for row in await cursor.fetchall()]
                 if "attachment" not in columns:
                     await db.execute("ALTER TABLE messages ADD COLUMN attachment TEXT")
+                if "plan_meta" not in columns:
+                    await db.execute("ALTER TABLE messages ADD COLUMN plan_meta TEXT")
+                    await db.execute("ALTER TABLE messages ADD COLUMN attachment TEXT")
+                if "plan_meta" not in columns:
+                    await db.execute("ALTER TABLE messages ADD COLUMN plan_meta TEXT")
         except Exception as e:
             print(f"Migration error: {e}")
 
@@ -100,6 +106,65 @@ async def init_db():
                     (provider, base_url, api_key, model, history_id)
                 )
         
+        # ── Humanoid Agent tables ────────────────────────────────────────────
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS pdf_sources (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                filename TEXT NOT NULL UNIQUE,
+                file_hash TEXT DEFAULT '',
+                chunk_count INTEGER DEFAULT 0,
+                total_pages INTEGER DEFAULT 0,
+                status TEXT DEFAULT 'processing',
+                file_size INTEGER DEFAULT 0,
+                error_message TEXT,
+                ingested_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS personality_config (
+                id INTEGER PRIMARY KEY DEFAULT 1,
+                warmth REAL DEFAULT 0.8,
+                humor REAL DEFAULT 0.6,
+                empathy REAL DEFAULT 0.9,
+                directness REAL DEFAULT 0.5,
+                curiosity REAL DEFAULT 0.7,
+                formality REAL DEFAULT 0.3,
+                verbosity REAL DEFAULT 0.5,
+                enabled INTEGER DEFAULT 1,
+                tanglish INTEGER DEFAULT 0,
+                social_white_lies INTEGER DEFAULT 0,
+                fiction_mode INTEGER DEFAULT 0,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        try:
+            async with db.execute("PRAGMA table_info(personality_config)") as cursor:
+                pc_columns = [row[1] for row in await cursor.fetchall()]
+                if "tanglish" not in pc_columns:
+                    await db.execute(
+                        "ALTER TABLE personality_config ADD COLUMN tanglish INTEGER DEFAULT 0"
+                    )
+                if "social_white_lies" not in pc_columns:
+                    await db.execute(
+                        "ALTER TABLE personality_config ADD COLUMN social_white_lies INTEGER DEFAULT 0"
+                    )
+                if "fiction_mode" not in pc_columns:
+                    await db.execute(
+                        "ALTER TABLE personality_config ADD COLUMN fiction_mode INTEGER DEFAULT 0"
+                    )
+        except Exception as e:
+            print(f"personality_config migration error: {e}")
+
+        # Seed personality config if empty
+        async with db.execute("SELECT COUNT(*) FROM personality_config") as cursor:
+            row = await cursor.fetchone()
+            if row[0] == 0:
+                await db.execute(
+                    "INSERT INTO personality_config (id) VALUES (1)"
+                )
+
         # New Migration: If llm_history is empty but llm_settings exists, seed history
         async with db.execute("SELECT COUNT(*) FROM llm_history") as cursor:
             h_row = await cursor.fetchone()
@@ -178,14 +243,15 @@ async def get_all_conversations():
 
 # ─── Messages ─────────────────────────────────────────────────────────────────
 
-async def save_message(session_id: str, role: str, content: str, attachment: Optional[dict] = None):
+async def save_message(session_id: str, role: str, content: str, attachment: Optional[dict] = None, plan_meta: Optional[dict] = None):
     """Save a single message to history with optional attachment."""
     import json
     attachment_json = json.dumps(attachment) if attachment else None
+    plan_meta_json = json.dumps(plan_meta) if plan_meta else None
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
-            "INSERT INTO messages (session_id, role, content, attachment) VALUES (?, ?, ?, ?)",
-            (session_id, role, content, attachment_json)
+            "INSERT INTO messages (session_id, role, content, attachment, plan_meta) VALUES (?, ?, ?, ?, ?)",
+            (session_id, role, content, attachment_json, plan_meta_json)
         )
         await db.commit()
 
@@ -196,7 +262,7 @@ async def get_history(session_id: str, limit: int = 50):
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
-            "SELECT id, role, content, attachment, timestamp FROM messages WHERE session_id = ? ORDER BY timestamp ASC LIMIT ?",
+            "SELECT id, role, content, attachment, plan_meta, timestamp FROM messages WHERE session_id = ? ORDER BY timestamp ASC LIMIT ?",
             (session_id, limit)
         ) as cursor:
             rows = await cursor.fetchall()
@@ -210,6 +276,13 @@ async def get_history(session_id: str, limit: int = 50):
                         item["attachment"] = None
                 else:
                     item["attachment"] = None
+                if item.get("plan_meta"):
+                    try:
+                        item["plan_meta"] = json.loads(item["plan_meta"])
+                    except Exception:
+                        item["plan_meta"] = None
+                else:
+                    item["plan_meta"] = None
                 # Required by API response model (MessageRecord.session_id)
                 item["session_id"] = session_id
                 history.append(item)
@@ -331,3 +404,97 @@ async def activate_llm_config(history_id: int):
                 await db.commit()
                 return True
     return False
+
+
+# ─── PDF Sources (Humanoid Agent) ────────────────────────────────────────────
+
+async def save_pdf_source(filename: str, status: str = "processing",
+                          file_size: int = 0, chunk_count: int = 0,
+                          total_pages: int = 0, file_hash: str = ""):
+    """Insert or update a PDF source record."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("""
+            INSERT INTO pdf_sources (filename, file_hash, chunk_count, total_pages, status, file_size)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(filename) DO UPDATE SET
+                file_hash = excluded.file_hash,
+                chunk_count = excluded.chunk_count,
+                total_pages = excluded.total_pages,
+                status = excluded.status,
+                file_size = excluded.file_size,
+                ingested_at = CURRENT_TIMESTAMP
+        """, (filename, file_hash, chunk_count, total_pages, status, file_size))
+        await db.commit()
+
+
+async def update_pdf_source_status(filename: str, status: str,
+                                    chunk_count: int = 0, total_pages: int = 0,
+                                    file_hash: str = "", error_message: str = ""):
+    """Update the status of a PDF source."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("""
+            UPDATE pdf_sources SET status = ?, chunk_count = ?,
+            total_pages = ?, file_hash = ?, error_message = ?
+            WHERE filename = ?
+        """, (status, chunk_count, total_pages, file_hash, error_message, filename))
+        await db.commit()
+
+
+async def get_pdf_sources():
+    """Get all PDF source records."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM pdf_sources ORDER BY ingested_at DESC"
+        ) as cursor:
+            rows = await cursor.fetchall()
+            return [dict(row) for row in rows]
+
+
+async def delete_pdf_source(source_name: str):
+    """Delete a PDF source record by source name (filename without .pdf)."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "DELETE FROM pdf_sources WHERE filename LIKE ?",
+            (f"{source_name}%",)
+        )
+        await db.commit()
+
+
+# ─── Personality Config (Humanoid Agent) ──────────────────────────────────────
+
+async def get_personality_config():
+    """Get the current personality configuration."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT * FROM personality_config WHERE id = 1") as cursor:
+            row = await cursor.fetchone()
+            if row:
+                return dict(row)
+            return None
+
+
+async def update_personality_config(config: dict):
+    """Update personality configuration."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("""
+            UPDATE personality_config SET
+                warmth = ?, humor = ?, empathy = ?, directness = ?,
+                curiosity = ?, formality = ?, verbosity = ?,
+                enabled = ?, tanglish = ?, social_white_lies = ?,
+                fiction_mode = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = 1
+        """, (
+            config.get("warmth", 0.8),
+            config.get("humor", 0.6),
+            config.get("empathy", 0.9),
+            config.get("directness", 0.5),
+            config.get("curiosity", 0.7),
+            config.get("formality", 0.3),
+            config.get("verbosity", 0.5),
+            1 if config.get("enabled", True) else 0,
+            1 if config.get("tanglish", False) else 0,
+            1 if config.get("social_white_lies", False) else 0,
+            1 if config.get("fiction_mode", False) else 0,
+        ))
+        await db.commit()

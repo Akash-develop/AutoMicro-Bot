@@ -26,7 +26,7 @@ export async function sendMessage(sessionId, message) {
 /**
  * Stream a response token by token via WebSocket, supporting tool events.
  */
-export function streamMessage(sessionId, message, onToken, onToolStart, onToolOutput, onDone, onError, attachment = null) {
+export function streamMessage(sessionId, message, onToken, onToolStart, onToolOutput, onDone, onError, attachment = null, onToolCommand = null) {
   const controller = new AbortController();
   let closed = false;
 
@@ -63,6 +63,8 @@ export function streamMessage(sessionId, message, onToken, onToolStart, onToolOu
       onToken?.(data.content ?? '');
     } else if (eventName === 'tool_start') {
       onToolStart?.(data.command);
+    } else if (eventName === 'tool_command') {
+      onToolCommand?.(data.tool, data.args);
     } else if (eventName === 'tool_output') {
       onToolOutput?.(data.result);
     } else if (eventName === 'done') {

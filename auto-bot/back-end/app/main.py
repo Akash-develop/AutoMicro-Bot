@@ -8,7 +8,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
-from app.routes import chat, settings
+from app.routes import chat, settings, knowledge
 from app.db.database import init_db
 
 load_dotenv()
@@ -35,6 +35,7 @@ app.add_middleware(
 # ── Routes ────────────────────────────────────────────────
 app.include_router(chat.router, tags=["chat"])
 app.include_router(settings.router, prefix="/settings", tags=["settings"])
+app.include_router(knowledge.router, prefix="/knowledge", tags=["knowledge"])
 
 @app.on_event("startup")
 async def startup_event():

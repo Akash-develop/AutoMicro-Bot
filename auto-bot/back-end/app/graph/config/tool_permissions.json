@@ -1,4 +1,11 @@
 {
     "execute_terminal_command": true,
+    "block_destructive_delete": false,
+    "block_disk_operations": false,
+    "block_system_power": false,
+    "block_system_integrity": false,
+    "block_remote_code_exec": false,
+    "block_permission_changes": false,
+    "block_fork_bomb": true,
     "_locked_tools": []
 }

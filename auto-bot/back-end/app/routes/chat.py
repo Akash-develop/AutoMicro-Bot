@@ -194,10 +194,12 @@ async def chat_stream_endpoint(request: Request, req: ChatStreamRequest):
         await save_message(session_id, "user", user_message, attachment if image_content else None)
 
         app = await get_app()
-        config = {"configurable": {"thread_id": session_id}}
+        config = {"configurable": {"thread_id": session_id}, "recursion_limit": 8}
 
         full_response: str = ""
         max_retries = 2
+        # Buffer to accumulate streamed tool-call argument fragments
+        _tc_args_buf: dict[str, dict] = {}
 
         for attempt in range(max_retries):
             try:
@@ -219,12 +221,24 @@ async def chat_stream_endpoint(request: Request, req: ChatStreamRequest):
                         full_response += content
                         yield _sse("token", {"content": content})
 
-                    # 2) Tool activations
+                    # 2) Tool activations — accumulate args fragments
                     tool_call_chunks = getattr(chunk, "tool_call_chunks", None)
                     if tool_call_chunks:
                         for tc in tool_call_chunks:
+                            tc_id = tc.get("id") or str(tc.get("index", 0))
                             if tc.get("name"):
+                                _tc_args_buf[tc_id] = {"name": tc["name"], "args": ""}
                                 yield _sse("tool_start", {"command": tc["name"]})
+                            if tc.get("args") and tc_id in _tc_args_buf:
+                                _tc_args_buf[tc_id]["args"] += tc["args"]
+                                try:
+                                    parsed = json.loads(_tc_args_buf[tc_id]["args"])
+                                    yield _sse("tool_command", {
+                                        "tool": _tc_args_buf[tc_id]["name"],
+                                        "args": parsed,
+                                    })
+                                except (json.JSONDecodeError, ValueError):
+                                    pass  # args still incomplete, keep accumulating
 
                     # 3) Tool results
                     if chunk_type in ("ToolMessageChunk", "ToolMessage") and getattr(chunk, "name", None):

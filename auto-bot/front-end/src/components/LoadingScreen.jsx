@@ -1,8 +1,6 @@
-import React from 'react';
 import logo from '../assets/automicro_bot_icon_v5.png';
 
 const LoadingScreen = () => {
-  // Generate a few random particles
   const particles = Array.from({ length: 15 }).map((_, i) => ({
     id: i,
     left: `${Math.random() * 100}%`,

@@ -76,3 +76,57 @@ export async function getAvailableModels(provider, baseUrl, apiKey = "") {
   if (!res.ok) throw new Error(`Failed to fetch models: ${res.status}`);
   return res.json();
 }
+
+// ─── Humanoid Personality Settings ───────────────────────────────
+
+export async function getPersonality() {
+  const res = await fetch(`${BASE_URL}/settings/personality`);
+  if (!res.ok) throw new Error(`Failed to load personality: ${res.status}`);
+  return res.json();
+}
+
+export async function updatePersonality(config) {
+  const res = await fetch(`${BASE_URL}/settings/personality`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(config),
+  });
+  if (!res.ok) throw new Error(`Failed to update personality: ${res.status}`);
+  return res.json();
+}
+
+export async function resetPersonality() {
+  const res = await fetch(`${BASE_URL}/settings/personality/reset`, {
+    method: 'POST',
+  });
+  if (!res.ok) throw new Error(`Failed to reset personality: ${res.status}`);
+  return res.json();
+}
+
+export async function getPersonalityPresets() {
+  const res = await fetch(`${BASE_URL}/settings/personality/presets`);
+  if (!res.ok) throw new Error(`Failed to load presets: ${res.status}`);
+  return res.json();
+}
+
+// ─── Knowledge Base ─────────────────────────────────────────────
+
+export async function getKnowledgeStats() {
+  const res = await fetch(`${BASE_URL}/knowledge/stats`);
+  if (!res.ok) throw new Error(`Failed to load knowledge stats: ${res.status}`);
+  return res.json();
+}
+
+export async function getKnowledgeSources() {
+  const res = await fetch(`${BASE_URL}/knowledge/sources`);
+  if (!res.ok) throw new Error(`Failed to load sources: ${res.status}`);
+  return res.json();
+}
+
+export async function ingestAllPDFs() {
+  const res = await fetch(`${BASE_URL}/knowledge/ingest-all`, {
+    method: 'POST',
+  });
+  if (!res.ok) throw new Error(`Failed to ingest PDFs: ${res.status}`);
+  return res.json();
+}

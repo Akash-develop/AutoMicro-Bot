@@ -11,6 +11,18 @@ BUILTIN_TOOLS = {
     "execute_terminal_command": True,
 }
 
+SAFETY_GUARDS = {
+    "block_destructive_delete": True,
+    "block_disk_operations": True,
+    "block_system_power": True,
+    "block_system_integrity": True,
+    "block_remote_code_exec": True,
+    "block_permission_changes": True,
+    "block_fork_bomb": True,
+}
+
+ALL_BUILTIN_KEYS = set(BUILTIN_TOOLS) | set(SAFETY_GUARDS)
+
 # Dropped when loading/saving so old configs do not flood custom rules / UI.
 DEPRECATED_TOOL_KEYS = frozenset(
     {
@@ -53,15 +65,12 @@ _permissions_cache = None
 
 def _sanitize_permissions(raw: dict) -> dict:
     """Merge file data with defaults; drop deprecated tool keys; keep custom rules."""
-    out = BUILTIN_TOOLS.copy()
+    out = {**BUILTIN_TOOLS, **SAFETY_GUARDS}
     saved = {k: v for k, v in raw.items() if k not in DEPRECATED_TOOL_KEYS}
     locked = saved.pop("_locked_tools", None)
 
     for key, val in saved.items():
-        if key in BUILTIN_TOOLS:
-            out[key] = bool(val)
-        else:
-            out[key] = bool(val)
+        out[key] = bool(val)
 
     if locked is not None and isinstance(locked, list):
         out["_locked_tools"] = [t for t in locked if t not in DEPRECATED_TOOL_KEYS]
@@ -76,7 +85,7 @@ def load_permissions(force_refresh=False):
     if _permissions_cache is not None and not force_refresh:
         return _permissions_cache
 
-    perms = BUILTIN_TOOLS.copy()
+    perms = {**BUILTIN_TOOLS, **SAFETY_GUARDS}
 
     try:
         if os.path.exists(CONFIG_PATH):

@@ -1,11 +1,5 @@
-/**
- * src/components/HistoryDrawer.jsx
- * ChatGPT-style conversation sidebar with date groups, rename, and delete.
- */
 import { useEffect, useState, useRef } from 'react';
 import { listSessions, renameConversation, deleteConversation } from '../api/chat';
-
-// ─── Date Grouping ────────────────────────────────────────────────────────────
 
 function getGroup(dateStr) {
     const d = new Date(dateStr);
@@ -31,8 +25,6 @@ function groupSessions(sessions) {
     }
     return GROUP_ORDER.filter(g => groups[g]).map(g => ({ label: g, items: groups[g] }));
 }
-
-// ─── Single Conversation Row ──────────────────────────────────────────────────
 
 function ConversationItem({ session, isActive, onSelect, onRenamed, onDeleted }) {
     const [hovering, setHovering] = useState(false);
@@ -77,6 +69,12 @@ function ConversationItem({ session, isActive, onSelect, onRenamed, onDeleted })
             onMouseLeave={() => { setHovering(false); }}
             onClick={() => !renaming && onSelect(session.session_id)}
         >
+            <div className="d-flex align-items-center gap-2 flex-shrink-0" style={{ color: isActive ? 'var(--accent)' : 'var(--muted-foreground)' }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                </svg>
+            </div>
+
             {renaming ? (
                 <input
                     ref={inputRef}
@@ -96,7 +94,6 @@ function ConversationItem({ session, isActive, onSelect, onRenamed, onDeleted })
 
             {hovering && !renaming && (
                 <div className="convo-actions" onClick={e => e.stopPropagation()}>
-                    {/* Rename */}
                     <button
                         className="convo-action-btn"
                         title="Rename"
@@ -107,7 +104,6 @@ function ConversationItem({ session, isActive, onSelect, onRenamed, onDeleted })
                             <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
                         </svg>
                     </button>
-                    {/* Delete */}
                     <button
                         className="convo-action-btn convo-action-delete"
                         title="Delete"
@@ -125,8 +121,6 @@ function ConversationItem({ session, isActive, onSelect, onRenamed, onDeleted })
         </div>
     );
 }
-
-// ─── Main Drawer ──────────────────────────────────────────────────────────────
 
 export default function HistoryDrawer({ isOpen, onClose, onSelectSession, onNewChat, currentSessionId, isPersistent }) {
     const [sessions, setSessions] = useState([]);
@@ -156,7 +150,6 @@ export default function HistoryDrawer({ isOpen, onClose, onSelectSession, onNewC
 
     const handleDeleted = (sessionId) => {
         setSessions(prev => prev.filter(s => s.session_id !== sessionId));
-        // If we deleted the active conversation, start a new chat
         if (sessionId === currentSessionId) {
             onNewChat();
         }
@@ -172,76 +165,92 @@ export default function HistoryDrawer({ isOpen, onClose, onSelectSession, onNewC
         if (!isPersistent) onClose();
     };
 
-    // If it's persistent (sidebar), we don't return null when !isOpen, we just don't show the overlay
     if (!isOpen && !isPersistent) return null;
 
     const grouped = groupSessions(sessions);
 
-    return (
-        <div 
-            className={`history-drawer-overlay ${isPersistent ? 'is-persistent' : ''} ${isOpen ? 'is-open' : ''}`} 
-            onClick={isPersistent ? undefined : onClose}
-        >
-            <div 
-                className={`history-drawer-content ${isPersistent ? 'is-persistent' : ''}`} 
-                onClick={e => e.stopPropagation()}
-            >
+    const listContent = (
+        <>
+            <button className="new-chat-btn" onClick={handleNewChat}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                    <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+                New conversation
+            </button>
 
-                {/* Header */}
-                <div className="drawer-header">
-                    <div className="d-flex align-items-center gap-2">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <div className="drawer-body">
+                {loading ? (
+                    <div className="d-flex justify-content-center p-4">
+                        <div className="d-flex gap-1 align-items-center">
+                            <span className="typing-dot" />
+                            <span className="typing-dot" />
+                            <span className="typing-dot" />
+                        </div>
+                    </div>
+                ) : sessions.length === 0 ? (
+                    <div className="convo-empty">
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--glass-border)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
                         </svg>
-                        <h5 className="m-0" style={{ fontSize: '14px', fontWeight: '600', color: 'var(--text-main)' }}>Conversations</h5>
+                        <span>No conversations yet</span>
+                        <span className="font-mono" style={{ fontSize: '11px', opacity: 0.4 }}>Start chatting to create one</span>
+                    </div>
+                ) : (
+                    grouped.map(group => (
+                        <div key={group.label} className="convo-group">
+                            <div className="convo-group-label">{group.label}</div>
+                            {group.items.map(s => (
+                                <ConversationItem
+                                    key={s.session_id}
+                                    session={s}
+                                    isActive={s.session_id === currentSessionId}
+                                    onSelect={handleSelect}
+                                    onRenamed={handleRenamed}
+                                    onDeleted={handleDeleted}
+                                />
+                            ))}
+                        </div>
+                    ))
+                )}
+            </div>
+        </>
+    );
+
+    if (isPersistent) {
+        return (
+            <div className="d-flex flex-column h-100" style={{ padding: '0 10px', gap: '8px' }}>
+                {listContent}
+            </div>
+        );
+    }
+
+    return (
+        <div 
+            className={`history-drawer-overlay ${isOpen ? 'is-open' : ''}`} 
+            onClick={onClose}
+        >
+            <div 
+                className="history-drawer-content" 
+                onClick={e => e.stopPropagation()}
+            >
+                <div className="drawer-header">
+                    <div className="d-flex align-items-center gap-2">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline>
+                        </svg>
+                        <h5 className="m-0" style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-main)' }}>History</h5>
+                        <span className="font-mono" style={{ fontSize: '10px', padding: '1px 6px', borderRadius: '6px', background: 'var(--input-bg)', color: 'var(--muted-foreground)' }}>
+                            {sessions.length}
+                        </span>
                     </div>
                     <button className="drawer-close-btn" onClick={onClose}>
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
                             <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
                         </svg>
                     </button>
                 </div>
 
-                {/* New Chat Button */}
-                <button className="new-chat-btn" onClick={handleNewChat}>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                        <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-                    </svg>
-                    New Chat
-                </button>
-
-                {/* Conversation List */}
-                <div className="drawer-body">
-                    {loading ? (
-                        <div className="d-flex justify-content-center p-4">
-                            <div className="spinner-border spinner-border-sm" style={{ color: 'var(--accent)', opacity: 0.7 }} role="status" />
-                        </div>
-                    ) : sessions.length === 0 ? (
-                        <div className="convo-empty">
-                            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--glass-border)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-                            </svg>
-                            <span>No conversations yet</span>
-                            <span style={{ fontSize: '11px', opacity: 0.4 }}>Start chatting to create one</span>
-                        </div>
-                    ) : (
-                        grouped.map(group => (
-                            <div key={group.label} className="convo-group">
-                                <div className="convo-group-label">{group.label}</div>
-                                {group.items.map(s => (
-                                    <ConversationItem
-                                        key={s.session_id}
-                                        session={s}
-                                        isActive={s.session_id === currentSessionId}
-                                        onSelect={handleSelect}
-                                        onRenamed={handleRenamed}
-                                        onDeleted={handleDeleted}
-                                    />
-                                ))}
-                            </div>
-                        ))
-                    )}
-                </div>
+                {listContent}
             </div>
         </div>
     );

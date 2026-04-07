@@ -1,49 +1,122 @@
-/**
- * src/components/ChatWindow.jsx
- * Scrollable message history + typing indicator
- */
 import { useEffect, useRef } from 'react';
 import MessageBubble from './MessageBubble.jsx';
 import logo from '../assets/automicro_bot_icon_v5.png';
 
+const SUGGESTIONS = [
+    { label: 'Summarize screen', emoji: '📋' },
+    { label: 'Open app', emoji: '🚀' },
+    { label: 'Quick note', emoji: '📝' },
+    { label: 'Run macro', emoji: '⚡' },
+    { label: 'Organize files', emoji: '📁' },
+    { label: 'System info', emoji: '💻' },
+];
+
 function TypingIndicator() {
     return (
-        <div className="luminous-container mb-4" style={{ width: 'fit-content' }}>
-            <div className="glow-orb" />
-            <div className="glow-orb" />
-            <div className="glow-orb" />
-            <span style={{ fontSize: '11px', fontWeight: '500', letterSpacing: '0.02em', color: 'var(--text-secondary)' }}>Thinking</span>
+        <div className="d-flex align-items-start mb-4">
+            <div className="typing-indicator-bar">
+                <span className="typing-dot" />
+                <span className="typing-dot" />
+                <span className="typing-dot" />
+            </div>
         </div>
     );
 }
 
-function WelcomeMessage() {
+function WelcomeMini() {
     return (
         <div className="d-flex flex-column align-items-center justify-content-center flex-grow-1 pb-5">
             <div
-                className="rounded-circle d-flex align-items-center justify-content-center mb-4 shadow-lg overflow-hidden"
-                style={{ width: '120px', height: '120px', background: 'rgba(0, 210, 255, 0.1)', border: '1px solid rgba(0, 210, 255, 0.2)' }}
+                className="d-flex align-items-center justify-content-center mb-4 overflow-hidden glow-primary"
+                style={{
+                    width: '80px',
+                    height: '80px',
+                    borderRadius: '24px',
+                    background: 'var(--accent-subtle)',
+                    border: '1px solid rgba(var(--accent-rgb), 0.2)',
+                }}
             >
-                <div
-                    className="rounded-circle d-flex align-items-center justify-content-center overflow-hidden"
-                    style={{ width: '100%', height: '100%', background: 'rgba(0, 210, 255, 0.15)' }}
-                >
-                    <img src={logo} alt="AutoMicro-bot Logo" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                </div>
+                <img
+                    src={logo}
+                    alt="AutoMicro-bot Logo"
+                    style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '24px' }}
+                />
             </div>
-            <h2 className="m-0" style={{ fontSize: '28px', fontWeight: 'bold', letterSpacing: '-0.02em' }}>
-                <span style={{ color: '#00d2ff' }}>AutoMicro</span><span style={{ color: 'var(--text-main)' }}>-Bot</span>
+            <h2 className="m-0" style={{ fontSize: '22px', fontWeight: '700', letterSpacing: '-0.02em' }}>
+                <span className="text-gradient-primary">Auto</span>
+                <span style={{ color: 'var(--text-main)' }}> micro-Bot</span>
             </h2>
-            <div className="text-center mt-2" style={{ fontSize: '15px', lineHeight: '1.6', color: 'var(--text-secondary)' }}>
-                Your local AI assistant is ready.<br />
-                How can I help you today?
+            <p className="text-center mt-2 mb-0" style={{ fontSize: '13px', lineHeight: '1.6', color: 'var(--muted-foreground)', maxWidth: '260px' }}>
+                Your AI desktop agent for macOS. I can automate tasks, control apps, and more.
+            </p>
+
+            <div className="d-flex gap-2 mt-4 flex-wrap justify-content-center">
+                {['Summarize screen', 'Open app', 'Quick note'].map((label) => (
+                    <span
+                        key={label}
+                        className="font-mono"
+                        style={{
+                            fontSize: '11px',
+                            padding: '6px 14px',
+                            borderRadius: '20px',
+                            border: '1px solid var(--glass-border)',
+                            color: 'var(--muted-foreground)',
+                            cursor: 'default',
+                        }}
+                    >
+                        {label}
+                    </span>
+                ))}
             </div>
+
+            <span className="font-mono mt-4" style={{ fontSize: '10px', color: 'var(--muted-foreground)', opacity: 0.5 }}>
+                v1.0.0 • macOS agent • Built with Tauri
+            </span>
+        </div>
+    );
+}
+
+function WelcomeNormal({ onSuggestionClick }) {
+    return (
+        <div className="normal-welcome">
+            <div className="normal-welcome-icon glow-primary">
+                <img
+                    src={logo}
+                    alt="AutoMicro-bot"
+                    style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '24px' }}
+                />
+            </div>
+            <div>
+                <h2 className="m-0" style={{ fontSize: '22px', fontWeight: '600', color: 'var(--text-main)' }}>
+                    Hey, I'm <span className="text-gradient-primary">Auto micro-Bot</span>
+                </h2>
+                <p className="mt-2 mb-0" style={{ fontSize: '14px', color: 'var(--muted-foreground)', maxWidth: '360px', lineHeight: '1.6' }}>
+                    Your AI desktop agent for macOS. I can automate tasks, control apps, take notes, and more.
+                </p>
+            </div>
+
+            <div className="suggestion-grid">
+                {SUGGESTIONS.map((s) => (
+                    <button
+                        key={s.label}
+                        className="suggestion-card"
+                        onClick={() => onSuggestionClick && onSuggestionClick(s.label)}
+                    >
+                        <span className="suggestion-card-emoji">{s.emoji}</span>
+                        <span>{s.label}</span>
+                    </button>
+                ))}
+            </div>
+
+            <span className="font-mono mt-3" style={{ fontSize: '11px', color: 'var(--muted-foreground)', opacity: 0.5 }}>
+                Press ⌘K to toggle floating mode
+            </span>
         </div>
     );
 }
 
 
-export default function ChatWindow({ messages, isTyping, newMsgId }) {
+export default function ChatWindow({ messages, isTyping, newMsgId, isNormalMode, onSuggestionClick }) {
     const bottomRef = useRef(null);
 
     useEffect(() => {
@@ -53,10 +126,9 @@ export default function ChatWindow({ messages, isTyping, newMsgId }) {
     return (
         <div className="chat-history">
             {messages.length === 0 ? (
-                <WelcomeMessage />
+                isNormalMode ? <WelcomeNormal onSuggestionClick={onSuggestionClick} /> : <WelcomeMini />
             ) : (
                 messages.map((msg) => {
-                    // Hide empty assistant messages while typing
                     if (msg.role === 'assistant' && !msg.content && (!msg.commands || msg.commands.length === 0) && msg.id === newMsgId && isTyping) {
                         return null;
                     }
@@ -79,4 +151,3 @@ export default function ChatWindow({ messages, isTyping, newMsgId }) {
         </div>
     );
 }
-

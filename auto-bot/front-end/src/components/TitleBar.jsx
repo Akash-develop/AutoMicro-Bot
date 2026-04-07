@@ -1,7 +1,3 @@
-/**
- * src/components/TitleBar.jsx
- * Custom drag region titlebar (replaces OS titlebar since decorations: false)
- */
 import { useState, useEffect, useRef } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import logo from '../assets/automicro_bot_icon_v5.png';
@@ -33,7 +29,6 @@ export default function TitleBar({ onClearChat, onToggleHistory, onMinimize, onO
         if (callback) callback();
     };
 
-    // Close menu when clicking outside
     useEffect(() => {
         const handleClickOutside = (event) => {
             if (menuRef.current && !menuRef.current.contains(event.target)) {
@@ -47,31 +42,55 @@ export default function TitleBar({ onClearChat, onToggleHistory, onMinimize, onO
     return (
         <div className="titlebar d-flex align-items-center justify-content-between position-relative" data-tauri-drag-region>
             <div className="d-flex align-items-center gap-3" data-tauri-drag-region>
-                <div
-                    className="rounded-circle d-flex align-items-center justify-content-center flex-shrink-0 shadow-sm overflow-hidden"
-                    style={{ width: '48px', height: '48px', background: 'rgba(0,210,255,0.05)' }}
-                >
-                    <img src={logo} alt="AutoMicro-bot Logo" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                <div className="position-relative flex-shrink-0">
+                    <div
+                        className="rounded-circle d-flex align-items-center justify-content-center overflow-hidden"
+                        style={{
+                            width: '42px',
+                            height: '42px',
+                            background: 'var(--accent-subtle)',
+                            border: '1px solid rgba(var(--accent-rgb), 0.2)',
+                        }}
+                    >
+                        <img src={logo} alt="AutoMicro-bot Logo" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    </div>
+                    <div
+                        className="position-absolute pulse-glow"
+                        style={{
+                            bottom: '-1px',
+                            right: '-1px',
+                            width: '10px',
+                            height: '10px',
+                            borderRadius: '50%',
+                            background: 'var(--accent)',
+                            border: '2px solid var(--bg-main)',
+                        }}
+                    />
                 </div>
 
-                <div className="d-flex flex-column ms-2" data-tauri-drag-region>
-                    <h1 className="m-0" style={{ fontSize: '18px', fontWeight: 'bold' }}>
-                        <span style={{ color: '#00d2ff' }}>AutoMicro</span>
-                        <span style={{ color: 'var(--text-main)' }}>-Bot</span>
+                <div className="d-flex flex-column" data-tauri-drag-region>
+                    <h1 className="m-0 d-flex align-items-center gap-1" style={{ fontSize: '15px', fontWeight: '700', letterSpacing: '-0.01em' }}>
+                        <span className="text-gradient-primary">Auto</span>
+                        <span style={{ color: 'var(--text-main)' }}>micro-Bot</span>
                     </h1>
-                    <div className="d-flex align-items-center gap-2 mt-1" data-tauri-drag-region>
-                        <span className="rounded-circle" style={{ width: '6px', height: '6px', background: '#10b981', boxShadow: '0 0 8px #10b981' }} />
-                        <span style={{ color: '#10b981', fontSize: '10px', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Online</span>
-                    </div>
+                    <span className="font-mono" style={{ fontSize: '10px', color: 'var(--muted-foreground)' }}>
+                        online • macOS agent
+                    </span>
                 </div>
             </div>
 
-            <div className="d-flex align-items-center gap-2">
-                {/* Three-dots menu button */}
+            <div className="d-flex align-items-center gap-1">
                 <button
                     onClick={toggleMenu}
-                    className={`btn btn-link p-0 d-flex align-items-center justify-content-center transition-all ${isMenuOpen ? 'opacity-100' : 'opacity-50'}`}
-                    style={{ width: '28px', height: '28px', background: isMenuOpen ? 'var(--glass-border)' : 'transparent', borderRadius: '50%', color: 'var(--text-main)' }}
+                    className="btn btn-link p-0 d-flex align-items-center justify-content-center"
+                    style={{
+                        width: '30px',
+                        height: '30px',
+                        background: isMenuOpen ? 'var(--accent-subtle)' : 'transparent',
+                        borderRadius: '10px',
+                        color: isMenuOpen ? 'var(--accent)' : 'var(--text-secondary)',
+                        transition: 'all 0.2s ease',
+                    }}
                 >
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
                         <circle cx="12" cy="12" r="1" fill="currentColor" />
@@ -80,15 +99,34 @@ export default function TitleBar({ onClearChat, onToggleHistory, onMinimize, onO
                     </svg>
                 </button>
 
-                <button onClick={handleMinimize} className="btn btn-link p-0 opacity-50 hover-opacity-100" style={{ width: '28px', height: '28px', color: 'var(--text-main)' }}>
+                <button
+                    onClick={handleMinimize}
+                    className="btn btn-link p-0 d-flex align-items-center justify-content-center"
+                    style={{
+                        width: '30px',
+                        height: '30px',
+                        borderRadius: '10px',
+                        color: 'var(--text-secondary)',
+                        transition: 'all 0.2s ease',
+                    }}
+                >
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><line x1="5" y1="12" x2="19" y2="12" /></svg>
                 </button>
-                <button onClick={handleClose} className="btn btn-link p-0 opacity-50 hover-opacity-100" style={{ width: '28px', height: '28px', color: 'var(--text-main)' }}>
+                <button
+                    onClick={handleClose}
+                    className="btn btn-link p-0 d-flex align-items-center justify-content-center"
+                    style={{
+                        width: '30px',
+                        height: '30px',
+                        borderRadius: '10px',
+                        color: 'var(--text-secondary)',
+                        transition: 'all 0.2s ease',
+                    }}
+                >
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
                 </button>
             </div>
 
-            {/* Dropdown Menu */}
             {isMenuOpen && (
                 <div ref={menuRef} className="dropdown-menu-glass">
                     <button className="dropdown-item-custom" onClick={() => handleAction(onOpenTerminal)}>
@@ -117,5 +155,3 @@ export default function TitleBar({ onClearChat, onToggleHistory, onMinimize, onO
         </div>
     );
 }
-
-

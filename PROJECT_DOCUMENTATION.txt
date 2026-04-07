@@ -1,0 +1,1125 @@
+================================================================================
+                    AUTOMICRO-BOT — FULL PROJECT DOCUMENTATION
+                         Version 0.1.0-alpha | April 2026
+================================================================================
+
+TABLE OF CONTENTS
+─────────────────
+  1.  Project Overview
+  2.  Tech Stack
+  3.  Architecture Diagram
+  4.  Directory Structure
+  5.  Data Flow & Communication
+  6.  Backend Documentation
+      6.1  Entry Point (main.py)
+      6.2  Routes — Chat (chat.py)
+      6.3  Routes — Settings (settings.py)
+      6.4  LangGraph Agent (agent.py)
+      6.5  Terminal Executor Tool (terminal_executor.py)
+      6.6  Permission Manager (permission_manager.py)
+      6.7  Database Layer (database.py)
+      6.8  Pydantic Schemas (schemas.py)
+      6.9  Configuration Files
+  7.  Frontend Documentation
+      7.1  Entry Point (main.jsx / index.html)
+      7.2  App Shell (App.jsx)
+      7.3  API Layer (chat.js / settings.js)
+      7.4  Components
+  8.  Tauri Desktop Shell
+  9.  Database Schema
+  10. LLM Provider Support
+  11. Security & Safety System
+  12. View Modes & UI States
+  13. SSE Streaming Protocol
+  14. Environment Configuration
+  15. Build & Deployment
+  16. Development Setup
+
+
+================================================================================
+1. PROJECT OVERVIEW
+================================================================================
+
+AutoMicro-Bot is a floating AI chatbot desktop application for macOS. It sits
+as an always-on-top transparent widget on your screen — similar to Apple's
+Dynamic Island — and lets you interact with a local AI assistant that can
+execute terminal commands on your machine.
+
+Key Characteristics:
+  - Runs entirely on-device (privacy-first, no cloud required by default)
+  - Powered by LangGraph ReAct agent with tool-calling capabilities
+  - Supports multiple LLM providers (Ollama, OpenAI, Gemini, OpenAI-compatible)
+  - Glassmorphism UI with dark/light theme support
+  - Three view modes: Dynamic Island bubble, mini floating, and full desktop
+  - Real-time SSE streaming with token-by-token responses
+  - Tool call visualization with macOS Terminal emulation
+  - Persistent chat history with session management
+  - Configurable safety guards to prevent dangerous commands
+
+
+================================================================================
+2. TECH STACK
+================================================================================
+
+┌─────────────────┬────────────────────────────────────────────────────────────┐
+│ Layer           │ Technologies                                             │
+├─────────────────┼────────────────────────────────────────────────────────────┤
+│ Desktop Shell   │ Tauri 2 (Rust 2021), tauri-plugin-shell,                 │
+│                 │ tauri-plugin-log, macOS Private API (transparency)        │
+├─────────────────┼────────────────────────────────────────────────────────────┤
+│ Frontend        │ React 19, Vite 7, Bootstrap 5, react-markdown,           │
+│                 │ remark-gfm, @tauri-apps/api                              │
+├─────────────────┼────────────────────────────────────────────────────────────┤
+│ Backend         │ Python 3.11+, FastAPI, Uvicorn                           │
+├─────────────────┼────────────────────────────────────────────────────────────┤
+│ AI/Agent        │ LangGraph, LangChain, langchain-ollama,                  │
+│                 │ langchain-openai, langchain-anthropic,                    │
+│                 │ langchain-google-genai                                    │
+├─────────────────┼────────────────────────────────────────────────────────────┤
+│ Database        │ SQLite via aiosqlite (app data),                         │
+│                 │ langgraph-checkpoint-sqlite (agent state)                 │
+├─────────────────┼────────────────────────────────────────────────────────────┤
+│ Realtime        │ Server-Sent Events (SSE) via FastAPI StreamingResponse   │
+├─────────────────┼────────────────────────────────────────────────────────────┤
+│ Tooling         │ Poetry (backend), npm (frontend), ESLint, pytest         │
+└─────────────────┴────────────────────────────────────────────────────────────┘
+
+
+================================================================================
+3. ARCHITECTURE DIAGRAM
+================================================================================
+
+HIGH-LEVEL SYSTEM ARCHITECTURE:
+
+  ┌──────────────────────────────────────────────────────────────────┐
+  │                      TAURI DESKTOP SHELL                        │
+  │                   (Rust, macOS native window)                    │
+  │  ┌────────────────────────────────────────────────────────────┐  │
+  │  │                    REACT FRONTEND                          │  │
+  │  │                                                            │  │
+  │  │  ┌──────────┐  ┌──────────┐  ┌────────────┐              │  │
+  │  │  │ BubbleView│  │ ChatWindow│  │ InputBar   │              │  │
+  │  │  └──────────┘  │  ┌───────┘  └────────────┘              │  │
+  │  │                │  │MessageBubble                           │  │
+  │  │                │  │  └─ToolCallBlock (Terminal Chrome)     │  │
+  │  │                │  └─────────                              │  │
+  │  │  ┌──────────┐  ┌──────────┐  ┌────────────┐              │  │
+  │  │  │ TitleBar  │  │HistoryDr│  │ SettingsDr │              │  │
+  │  │  └──────────┘  └──────────┘  └────────────┘              │  │
+  │  │                                                            │  │
+  │  │  ┌─────────────────────────────────────────┐              │  │
+  │  │  │          API LAYER (chat.js / settings.js)│              │  │
+  │  │  └────────────────────┬────────────────────┘              │  │
+  │  └───────────────────────┼────────────────────────────────────┘  │
+  └──────────────────────────┼──────────────────────────────────────┘
+                             │
+                    HTTP / SSE (localhost)
+                             │
+  ┌──────────────────────────┼──────────────────────────────────────┐
+  │                  FASTAPI BACKEND SERVER                         │
+  │                                                                 │
+  │  ┌───────────┐     ┌──────────────┐     ┌──────────────────┐   │
+  │  │ main.py   │────▶│ routes/      │     │ models/schemas.py│   │
+  │  │ (FastAPI) │     │  chat.py     │     └──────────────────┘   │
+  │  └───────────┘     │  settings.py │                             │
+  │                    └──────┬───────┘                             │
+  │                           │                                     │
+  │                    ┌──────▼───────┐                             │
+  │                    │ graph/       │                             │
+  │                    │  agent.py    │◄── LangGraph ReAct Agent    │
+  │                    │  (LLM Core) │                             │
+  │                    └──────┬───────┘                             │
+  │                           │                                     │
+  │              ┌────────────┼────────────┐                       │
+  │              │            │            │                       │
+  │       ┌──────▼─────┐ ┌───▼────┐ ┌─────▼──────────┐           │
+  │       │terminal_   │ │permis- │ │tool_permissions│           │
+  │       │executor.py │ │sion_   │ │.json (config)  │           │
+  │       │(Shell Tool)│ │manager │ └────────────────┘           │
+  │       └────────────┘ └────────┘                               │
+  │                                                                 │
+  │  ┌────────────────────────────────────────────────────────────┐ │
+  │  │                   db/database.py                           │ │
+  │  │  ┌──────────────┐  ┌───────────┐  ┌───────────────────┐  │ │
+  │  │  │ automicro.db │  │  stm.db   │  │ chroma_db (vector)│  │ │
+  │  │  │ (chat data)  │  │ (LangGraph│  │ (embeddings,      │  │ │
+  │  │  │              │  │ checkpts) │  │  future use)      │  │ │
+  │  │  └──────────────┘  └───────────┘  └───────────────────┘  │ │
+  │  └────────────────────────────────────────────────────────────┘ │
+  └─────────────────────────────────────────────────────────────────┘
+
+
+AGENT EXECUTION FLOW:
+
+  User Input
+      │
+      ▼
+  FastAPI /chat/stream (SSE)
+      │
+      ▼
+  LangGraph ReAct Agent
+      │
+      ├──▶ LLM (Ollama / OpenAI / Gemini)
+      │       │
+      │       ▼
+      │    Decision: respond OR use tool?
+      │       │
+      │       ├── Respond ──▶ Stream tokens back
+      │       │
+      │       └── Use Tool ──▶ execute_terminal_command
+      │                            │
+      │                            ├── Permission Check
+      │                            ├── Safety Guard Check
+      │                            ├── subprocess.run()
+      │                            └── Return output
+      │                                 │
+      │       ◄──────────────────────────┘
+      │       │
+      │    LLM processes tool output
+      │    (may call tools again or respond)
+      │
+      ▼
+  SSE Stream to Frontend
+
+
+================================================================================
+4. DIRECTORY STRUCTURE
+================================================================================
+
+AutoMicro-bot/
+├── .DS_Store
+├── PROJECT_DOCUMENTATION.txt          ← This file
+└── auto-bot/
+    ├── .gitignore
+    ├── README.md                      ← Project overview & setup guide
+    │
+    ├── back-end/                      ← Python FastAPI Backend
+    │   ├── .env.example               ← Environment variable template
+    │   ├── pyproject.toml             ← Poetry config & dependencies
+    │   ├── poetry.lock                ← Locked dependency versions
+    │   ├── app/
+    │   │   ├── __init__.py
+    │   │   ├── main.py                ← FastAPI app entry point
+    │   │   ├── config/
+    │   │   │   ├── __init__.py
+    │   │   │   └── tool_permissions.json  ← (legacy location)
+    │   │   ├── db/
+    │   │   │   ├── __init__.py
+    │   │   │   └── database.py        ← SQLite async database layer
+    │   │   ├── graph/
+    │   │   │   ├── __init__.py
+    │   │   │   ├── agent.py           ← LangGraph ReAct agent core
+    │   │   │   ├── config/
+    │   │   │   │   └── tool_permissions.json  ← Active permission config
+    │   │   │   └── tools/
+    │   │   │       ├── __init__.py
+    │   │   │       ├── permission_manager.py  ← Permission system & decorator
+    │   │   │       └── terminal_executor.py   ← Shell command execution tool
+    │   │   ├── models/
+    │   │   │   ├── __init__.py
+    │   │   │   └── schemas.py         ← Pydantic request/response models
+    │   │   └── routes/
+    │   │       ├── __init__.py
+    │   │       ├── chat.py            ← Chat & history REST/SSE endpoints
+    │   │       └── settings.py        ← Permissions & LLM config endpoints
+    │   ├── tests/                     ← (empty, placeholder)
+    │   ├── scripts/                   ← (empty, placeholder)
+    │   ├── test_agent.py              ← Agent integration test
+    │   ├── test_ws.py                 ← WebSocket connectivity test
+    │   ├── test_gemini.py             ← Gemini provider test
+    │   ├── automicro.db               ← SQLite app database (runtime)
+    │   ├── stm.db                     ← LangGraph checkpoint database
+    │   ├── stm.db-shm / stm.db-wal   ← SQLite WAL files
+    │   ├── automation_audit.db        ← Audit trail database
+    │   ├── chroma_db/                 ← ChromaDB vector store
+    │   └── data/chroma/               ← Alternative ChromaDB location
+    │
+    └── front-end/                     ← Tauri + React Frontend
+        ├── .gitignore
+        ├── README.md
+        ├── index.html                 ← Single HTML entry point
+        ├── package.json               ← npm dependencies & scripts
+        ├── package-lock.json
+        ├── vite.config.js             ← Vite dev server configuration
+        ├── eslint.config.js           ← ESLint flat config
+        ├── src/
+        │   ├── main.jsx               ← React DOM render entry
+        │   ├── App.jsx                ← Root app shell & state orchestrator
+        │   ├── index.css              ← Global CSS (1784 lines, themes, glass)
+        │   ├── api/
+        │   │   ├── chat.js            ← Chat/history/streaming API client
+        │   │   └── settings.js        ← Permissions/LLM settings API client
+        │   ├── assets/
+        │   │   └── automicro_bot_icon_v5.png  ← Bot logo/icon
+        │   └── components/
+        │       ├── BubbleView.jsx     ← Dynamic Island bubble (minimized)
+        │       ├── ChatWindow.jsx     ← Message list + welcome screens
+        │       ├── HistoryDrawer.jsx  ← Session history sidebar
+        │       ├── InputBar.jsx       ← Text input + file attach + send
+        │       ├── LoadingScreen.jsx  ← Animated splash/transition screen
+        │       ├── MessageBubble.jsx  ← Individual message rendering
+        │       ├── SettingsDrawer.jsx ← Multi-page settings panel
+        │       ├── TerminalWindow.jsx ← Legacy terminal output (unused)
+        │       ├── TitleBar.jsx       ← Floating view header + menu
+        │       ├── ToolCallBlock.jsx  ← Tool call with Terminal chrome
+        │       └── ToolCallsList.jsx  ← Tool call list wrapper
+        └── src-tauri/                 ← Tauri native shell
+            ├── Cargo.toml             ← Rust dependencies
+            ├── Cargo.lock
+            ├── build.rs               ← Tauri build script
+            ├── tauri.conf.json        ← Main Tauri configuration
+            ├── tauri.conf.dev.json    ← Dev-specific Tauri config
+            ├── capabilities/default.json  ← Tauri permissions
+            ├── gen/schemas/           ← Generated Tauri schemas
+            ├── scripts/
+            │   └── prepare-sidecar.mjs    ← Copies backend binary for bundling
+            ├── binaries/
+            │   └── automicro-backend-aarch64-apple-darwin  ← Sidecar binary
+            ├── src/
+            │   ├── main.rs            ← Tauri main (auto-generated)
+            │   └── lib.rs             ← Tauri setup, sidecar spawn logic
+            └── icons/                 ← App icons (PNG, ICO, ICNS)
+
+
+================================================================================
+5. DATA FLOW & COMMUNICATION
+================================================================================
+
+5.1 CHAT MESSAGE FLOW (Streaming)
+─────────────────────────────────
+
+  1. User types message in InputBar → calls handleSend(text, attachment)
+  2. App.jsx adds user message to local state, creates placeholder assistant msg
+  3. streamMessage() in chat.js sends POST /chat/stream with:
+     - session_id, message, optional attachment (file content as base64/text)
+  4. Backend chat.py receives request:
+     a. Creates conversation in DB if first message
+     b. Saves user message to DB
+     c. Loads message history from DB (last 50 messages)
+     d. Calls LangGraph agent via app.astream()
+  5. Agent processes with LLM:
+     a. LLM decides to respond or use tools
+     b. If tool call → executes terminal command → returns output
+     c. LLM may iterate (multiple tool calls per turn)
+  6. Backend streams SSE events:
+     - event: token     → individual text tokens
+     - event: tool_start → tool name + arguments
+     - event: tool_command → the command being executed
+     - event: tool_output → tool execution result
+     - event: done      → final complete response
+     - event: error     → error message
+  7. Frontend parses SSE events:
+     - Tokens appended to assistant message content
+     - Tool calls added to message commands array
+     - UI updates in real-time (typing indicator, tool blocks)
+  8. On "done", saves assistant message to DB
+
+5.2 SETTINGS FLOW
+──────────────────
+
+  Permissions:
+    Frontend SettingsDrawer → settings.js API → settings.py route
+    → permission_manager.py → tool_permissions.json (disk)
+
+  LLM Config:
+    Frontend SettingsDrawer → settings.js API → settings.py route
+    → database.py (llm_settings + llm_history tables) → reset_agent()
+
+5.3 HISTORY FLOW
+────────────────
+
+  Frontend HistoryDrawer → chat.js API → chat.py route → database.py
+  Operations: list sessions, load messages, rename, delete, clear
+
+
+================================================================================
+6. BACKEND DOCUMENTATION
+================================================================================
+
+────────────────────────────────────────────────────────────────────────────────
+6.1 ENTRY POINT — app/main.py
+────────────────────────────────────────────────────────────────────────────────
+
+Purpose: Creates and configures the FastAPI application instance.
+
+Key Components:
+  - FastAPI app with title "AutoMicro-Bot API"
+  - CORS middleware configured from CORS_ORIGINS env var
+    Default origins: http://localhost:5173, tauri://localhost
+  - Mounts two routers:
+    • chat.router (no prefix) — chat & history endpoints
+    • settings.router (prefix /settings) — permissions & LLM config
+  - Startup event calls init_db() for SQLite table creation
+  - Health check at GET /
+  - start() function runs Uvicorn on 127.0.0.1:8000 with reload
+
+────────────────────────────────────────────────────────────────────────────────
+6.2 ROUTES — app/routes/chat.py
+────────────────────────────────────────────────────────────────────────────────
+
+Purpose: All chat-related REST and SSE streaming endpoints.
+
+Endpoints:
+  ┌────────┬──────────────────────────────┬──────────────────────────────────┐
+  │ Method │ Path                         │ Purpose                          │
+  ├────────┼──────────────────────────────┼──────────────────────────────────┤
+  │ POST   │ /chat                        │ Blocking chat (full response)    │
+  │ POST   │ /chat/stream                 │ SSE streaming chat               │
+  │ GET    │ /history                     │ List all conversations           │
+  │ GET    │ /history/{session_id}        │ Get messages for a session       │
+  │ DELETE │ /history/{session_id}        │ Delete conversation + messages   │
+  │ DELETE │ /history/{session_id}/msgs   │ Clear messages only              │
+  │ PATCH  │ /conversations/{session_id}  │ Rename a conversation            │
+  │ POST   │ /terminal/open               │ Open macOS Terminal.app          │
+  └────────┴──────────────────────────────┴──────────────────────────────────┘
+
+Key Functions:
+  - make_title(message): Generates conversation title from first user message
+    (truncated to 50 characters)
+  - _sse(event, data): Formats Server-Sent Events strings
+  - chat_stream_endpoint(): Main streaming handler
+    • Handles file attachments (images as multi-modal, text prepended)
+    • Streams via LangGraph app.astream() in messages mode
+    • Emits token, tool_start, tool_command, tool_output, done, error events
+    • Retry logic for Gemini thought_signature 400 errors
+
+────────────────────────────────────────────────────────────────────────────────
+6.3 ROUTES — app/routes/settings.py
+────────────────────────────────────────────────────────────────────────────────
+
+Purpose: Tool permissions and LLM provider configuration.
+
+Endpoints:
+  ┌────────┬────────────────────────────────────┬────────────────────────────┐
+  │ Method │ Path                               │ Purpose                    │
+  ├────────┼────────────────────────────────────┼────────────────────────────┤
+  │ GET    │ /settings/permissions              │ Get tool permissions       │
+  │ POST   │ /settings/permissions              │ Update permissions         │
+  │ DELETE │ /settings/permissions/{tool}       │ Delete a permission        │
+  │ GET    │ /settings/llm                      │ Get active LLM config      │
+  │ POST   │ /settings/llm                      │ Save new LLM config        │
+  │ GET    │ /settings/llm/history              │ List saved LLM configs     │
+  │ POST   │ /settings/llm/history/{id}/activate│ Activate saved config      │
+  │ DELETE │ /settings/llm/history/{id}         │ Delete saved config        │
+  │ GET    │ /settings/llm/models               │ Fetch available models     │
+  └────────┴────────────────────────────────────┴────────────────────────────┘
+
+Behavior:
+  - On LLM config change, calls reset_agent() to force re-initialization
+  - Model fetching: tries /api/tags (Ollama) first, falls back to /models
+    (OpenAI-compatible)
+
+────────────────────────────────────────────────────────────────────────────────
+6.4 LANGGRAPH AGENT — app/graph/agent.py
+────────────────────────────────────────────────────────────────────────────────
+
+Purpose: The AI brain — configures and manages the LangGraph ReAct agent.
+
+Key Globals:
+  - _agent_app: Singleton LangGraph compiled application
+  - _saver: AsyncSqliteSaver for conversation checkpointing (stm.db)
+  - _current_provider / _current_model: Track active LLM
+
+Key Functions:
+  - reset_agent(): Clears singleton to force re-init on next call
+  - build_system_prompt(state): Constructs the system message including:
+    • macOS command reference guide
+    • Tool usage instructions
+    • Interruption handling rules
+    • Dynamic permission rules (ALLOWED/FORBIDDEN) from config
+    • Gemini-specific message sanitization
+  - get_app(): Lazy-initializes the LangGraph app:
+    • Reads LLM config from database
+    • Instantiates appropriate LangChain LLM class
+    • Creates AsyncSqliteSaver checkpointer
+    • Builds create_react_agent with terminal tool
+  - get_agent_response(session_id, message): Blocking invoke interface
+
+Supported LLM Providers:
+  - ollama / ollama-cloud  → ChatOllama
+  - openai / openai-compat → ChatOpenAI
+  - gemini                 → ChatGoogleGenerativeAI
+
+Tools Bound: [execute_terminal_command] — single tool
+
+Agent Type: LangGraph ReAct (reason + act loop)
+  The agent receives the user message, reasons about what to do, optionally
+  calls tools, observes results, and continues until it has a final answer.
+
+────────────────────────────────────────────────────────────────────────────────
+6.5 TERMINAL EXECUTOR — app/graph/tools/terminal_executor.py
+────────────────────────────────────────────────────────────────────────────────
+
+Purpose: The only tool available to the agent — executes shell commands.
+
+Function: execute_terminal_command(command: str) -> str
+  - Decorated with @tool (LangChain) and @check_permission
+  - Runs via subprocess.run() in user's home directory
+  - 60-second timeout
+  - Returns formatted output with exit code and elapsed time
+
+Safety Guards (regex pattern groups):
+  ┌──────────────────────────┬───────────────────────────────────────────────┐
+  │ Guard Name               │ What It Blocks                               │
+  ├──────────────────────────┼───────────────────────────────────────────────┤
+  │ block_destructive_delete │ rm -rf /, rm -rf *, srm                      │
+  │ block_disk_operations    │ mkfs, wipefs, dd, diskutil erase/partition   │
+  │ block_system_power       │ shutdown, reboot                             │
+  │ block_system_integrity   │ csrutil disable, nvram boot-args             │
+  │ block_remote_code_exec   │ curl|sh, wget|sh                             │
+  │ block_permission_changes │ chmod 777 /, chown -R /                      │
+  │ block_fork_bomb          │ Fork bomb patterns, background disown        │
+  └──────────────────────────┴───────────────────────────────────────────────┘
+
+────────────────────────────────────────────────────────────────────────────────
+6.6 PERMISSION MANAGER — app/graph/tools/permission_manager.py
+────────────────────────────────────────────────────────────────────────────────
+
+Purpose: JSON-based permission system with caching and a decorator.
+
+Key Constants:
+  - BUILTIN_TOOLS: {"execute_terminal_command": True}
+  - SAFETY_GUARDS: 7 guards, all default True (enabled)
+  - DEPRECATED_TOOL_KEYS: ~25 old tool names, auto-stripped on load/save
+  - CONFIG_PATH: app/graph/config/tool_permissions.json
+
+Key Functions:
+  - _sanitize_permissions(raw): Merges saved config with defaults, drops
+    deprecated keys, preserves _locked_tools and custom rules
+  - load_permissions(force_refresh): Loads from JSON with caching
+  - save_permissions(permissions): Sanitizes and writes to disk
+  - check_permission(tool_name): Parameterized decorator — if tool is
+    disabled, returns "permission disabled" message instead of executing
+
+────────────────────────────────────────────────────────────────────────────────
+6.7 DATABASE LAYER — app/db/database.py
+────────────────────────────────────────────────────────────────────────────────
+
+Purpose: All async SQLite operations using aiosqlite.
+
+Tables:
+  ┌──────────────┬──────────────────────────────────────────────────────────┐
+  │ Table        │ Purpose                                                 │
+  ├──────────────┼──────────────────────────────────────────────────────────┤
+  │ messages     │ Chat messages: session_id, role, content, attachment,   │
+  │              │ plan_meta, timestamp. Indexed on session_id.            │
+  ├──────────────┼──────────────────────────────────────────────────────────┤
+  │ conversations│ Session metadata: session_id (PK), title, created_at   │
+  ├──────────────┼──────────────────────────────────────────────────────────┤
+  │ llm_settings │ Single-row active LLM config: provider, base_url,      │
+  │              │ api_key, model, history_id                              │
+  ├──────────────┼──────────────────────────────────────────────────────────┤
+  │ llm_history  │ Historical LLM configs with is_active flag             │
+  └──────────────┴──────────────────────────────────────────────────────────┘
+
+Key Functions:
+  - init_db(): Creates tables, runs migrations, seeds defaults from env
+  - create_conversation() / rename_conversation() / delete_conversation()
+  - get_all_conversations(): JOIN with latest message, ordered by last_active
+  - save_message(): INSERT with optional attachment/plan_meta JSON
+  - get_history(): SELECT last 50 messages, deserializes JSON fields
+  - clear_history(): DELETE messages (keeps conversation record)
+  - is_first_message(): COUNT check for session
+  - get_llm_settings() / update_llm_settings()
+  - get_llm_history() / save_llm_history() / delete_llm_history()
+  - activate_llm_config(): Activate historical config, sync to llm_settings
+
+DB Path: From DB_PATH env var, defaults to ./automicro.db
+
+────────────────────────────────────────────────────────────────────────────────
+6.8 PYDANTIC SCHEMAS — app/models/schemas.py
+────────────────────────────────────────────────────────────────────────────────
+
+Purpose: All API request/response data models.
+
+Models:
+  ┌───────────────────┬────────────────────────────────────────────────────┐
+  │ Model             │ Fields / Purpose                                   │
+  ├───────────────────┼────────────────────────────────────────────────────┤
+  │ ChatRequest       │ session_id, message                                │
+  │ ChatResponse      │ response, session_id, timestamp                    │
+  │ MessageRecord     │ id, session_id, role, content, timestamp, attach   │
+  │ SessionSummary    │ session_id, title, created_at, last_active, etc.   │
+  │ RenameRequest     │ title (1-200 chars)                                │
+  │ Attachment        │ name, content, mime_type, size                      │
+  │ ChatStreamRequest │ session_id, message, optional attachment            │
+  │ LLMSettings       │ provider, base_url, api_key, model                 │
+  │ DeleteResponse    │ session_id, deleted count, message                  │
+  │ WSMessage         │ message, optional attachment (legacy WebSocket)     │
+  │ WSToken           │ type, content (legacy WebSocket)                    │
+  └───────────────────┴────────────────────────────────────────────────────┘
+
+────────────────────────────────────────────────────────────────────────────────
+6.9 CONFIGURATION FILES
+────────────────────────────────────────────────────────────────────────────────
+
+tool_permissions.json (app/graph/config/):
+  {
+    "execute_terminal_command": true,
+    "block_destructive_delete": true,
+    "block_disk_operations": true,
+    "block_system_power": false,        ← Currently disabled!
+    "block_system_integrity": true,
+    "block_remote_code_exec": true,
+    "block_permission_changes": true,
+    "block_fork_bomb": true,
+    "_locked_tools": []
+  }
+
+.env.example:
+  LLM_PROVIDER=ollama
+  OLLAMA_BASE_URL=http://localhost:11434
+  OLLAMA_MODEL=llama3
+  DB_PATH=./automicro.db
+  CORS_ORIGINS=http://localhost:5173,tauri://localhost
+  MAX_HISTORY_MESSAGES=50
+
+
+================================================================================
+7. FRONTEND DOCUMENTATION
+================================================================================
+
+────────────────────────────────────────────────────────────────────────────────
+7.1 ENTRY POINT — index.html / main.jsx
+────────────────────────────────────────────────────────────────────────────────
+
+index.html:
+  - Loads Google Fonts: JetBrains Mono (monospace) & Inter (sans-serif)
+  - Sets page title to "AutoMicro-Bot"
+  - Mounts React into <div id="root">
+
+main.jsx:
+  - ReactDOM.createRoot on #root
+  - Wraps <App /> in React.StrictMode
+  - Imports index.css for global styles
+
+────────────────────────────────────────────────────────────────────────────────
+7.2 APP SHELL — App.jsx
+────────────────────────────────────────────────────────────────────────────────
+
+Purpose: Main application orchestrator. Manages all top-level state.
+
+State Variables:
+  ┌──────────────────┬──────────────────────────────────────────────────────┐
+  │ State            │ Purpose                                              │
+  ├──────────────────┼──────────────────────────────────────────────────────┤
+  │ sessionId        │ Current chat session ID (persisted to localStorage)  │
+  │ messages         │ Array of message objects                             │
+  │ isTyping         │ Whether assistant is streaming                       │
+  │ newMsgId         │ Latest message ID for animations                     │
+  │ isDrawerOpen     │ History sidebar visibility                           │
+  │ isSettingsOpen   │ Settings drawer visibility                           │
+  │ viewMode         │ 'bubble' / 'mini' / 'normal'                        │
+  │ isAppLoading     │ 2-second loading screen on transitions               │
+  │ theme            │ 'dark' / 'light' (persisted to localStorage)         │
+  │ activeStream     │ Ref holding current SSE stream for abort             │
+  └──────────────────┴──────────────────────────────────────────────────────┘
+
+Key Functions:
+  - handleSend(text, attachment): Sends message via SSE streaming
+  - handleStop(): Aborts active stream, marks tool calls as aborted
+  - handleClearChat(): Clears local messages + API call
+  - handleNewChat(): New session with UUID
+  - handleSelectSession(id): Switch sessions, abort active stream
+  - handleNormalMode(): Resize Tauri window to 1024x768
+  - handleMinimizeToBubble(): Shrink window to 200x84
+  - handleRestoreFromBubble(mode): Restore to mini (340x450) or full (360x520)
+  - Snap-to-corner logic in bubble mode (on drag release)
+  - Theme toggle: applies data-theme to <html>
+
+View Modes:
+  1. Bubble    → <BubbleView />
+  2. Loading   → <LoadingScreen />
+  3. Normal    → Desktop layout with sidebar + header + ChatWindow + InputBar
+  4. Mini      → Compact floating glass container (default)
+
+────────────────────────────────────────────────────────────────────────────────
+7.3 API LAYER — chat.js / settings.js
+────────────────────────────────────────────────────────────────────────────────
+
+Base URL Logic:
+  - Tauri production: http://127.0.0.1:8765 (sidecar port)
+  - Development/browser: http://localhost:8000
+
+chat.js Functions:
+  ┌──────────────────────┬────────┬────────────────────────────────────────┐
+  │ Function             │ Method │ Purpose                                │
+  ├──────────────────────┼────────┼────────────────────────────────────────┤
+  │ sendMessage()        │ POST   │ One-shot chat (not used in SSE flow)   │
+  │ streamMessage()      │ POST   │ SSE streaming with event callbacks     │
+  │ getHistory()         │ GET    │ Load messages for a session            │
+  │ clearHistory()       │ DELETE │ Clear messages                         │
+  │ listSessions()       │ GET    │ List all conversations                 │
+  │ renameConversation() │ PATCH  │ Rename a conversation                  │
+  │ deleteConversation() │ DELETE │ Delete conversation + messages         │
+  │ openTerminal()       │ POST   │ Open local terminal window             │
+  └──────────────────────┴────────┴────────────────────────────────────────┘
+
+settings.js Functions:
+  ┌──────────────────────┬────────┬────────────────────────────────────────┐
+  │ Function             │ Method │ Purpose                                │
+  ├──────────────────────┼────────┼────────────────────────────────────────┤
+  │ getPermissions()     │ GET    │ Fetch tool permission toggles          │
+  │ updatePermissions()  │ POST   │ Save permissions + locked tools        │
+  │ deletePermission()   │ DELETE │ Remove a custom permission             │
+  │ getLLMSettings()     │ GET    │ Get current LLM config                 │
+  │ updateLLMSettings()  │ POST   │ Save new LLM provider/model/key        │
+  │ getLLMHistory()      │ GET    │ List saved LLM configurations          │
+  │ activateLLMConfig()  │ POST   │ Switch to a saved config               │
+  │ deleteLLMHistory()   │ DELETE │ Delete a saved config                  │
+  │ getAvailableModels() │ GET    │ Discover models from provider          │
+  └──────────────────────┴────────┴────────────────────────────────────────┘
+
+────────────────────────────────────────────────────────────────────────────────
+7.4 COMPONENTS
+────────────────────────────────────────────────────────────────────────────────
+
+BubbleView.jsx — Dynamic Island Bubble
+  Props: onRestore, isTyping, onStop
+  Features:
+    - 64x64 circular logo bubble
+    - Expands when typing: shows dots + "thinking" + stop button
+    - Expands when done: shows checkmark + "done" (3 seconds)
+    - Double-click → restore to mini view
+    - Triple-click → restore to full view
+    - Draggable with snap-to-corner
+
+ChatWindow.jsx — Message List
+  Props: messages, isTyping, newMsgId, isNormalMode, onSuggestionClick
+  Features:
+    - Auto-scroll to bottom on new messages
+    - TypingIndicator (three bouncing dots)
+    - WelcomeMini: compact welcome with suggestion chips
+    - WelcomeNormal: larger welcome with 3x2 suggestion card grid
+    - Skips rendering empty loading assistant messages
+
+MessageBubble.jsx — Individual Message
+  Props: role, content, attachment, commands, timestamp, isNew
+  Features:
+    - User: glassmorphism bubble with ReactMarkdown, image attachments
+    - Assistant: tool calls via ToolCallsList, markdown content
+    - Action buttons on hover: Copy, Thumbs Up, Thumbs Down
+
+InputBar.jsx — Message Input
+  Props: onSend, onStop, disabled
+  Features:
+    - Auto-resizing textarea (max 80px)
+    - File attachment: Upload Image, Project Path, Read Clipboard
+    - Attachment preview with remove button
+    - Chat/Plan mode toggle (visual only currently)
+    - Send arrow / Stop square button
+    - Enter to send, Shift+Enter for newline
+
+TitleBar.jsx — Floating View Header
+  Props: onClearChat, onToggleHistory, onMinimize, onOpenSettings,
+         onNormalMode, onFloatingMode, onOpenTerminal, viewMode
+  Features:
+    - Draggable via data-tauri-drag-region
+    - Bot identity: logo, gradient title, "online" status
+    - Dropdown: Terminal, Normal/Float toggle, Settings, History, New Chat
+    - Window controls: minimize (to bubble), close
+
+SettingsDrawer.jsx — Settings Panel
+  Props: isOpen, onClose, theme, toggleTheme
+  Pages:
+    1. Main — links to sub-pages + appearance toggle + about
+    2. Tool Permissions — toggle terminal tool + 7 safety guards +
+       custom rules with add/edit/delete/lock
+    3. Model Settings — provider selector (Ollama, Ollama Cloud, OpenAI,
+       Gemini, OpenAI-compatible), base URL, API key, model picker with
+       auto-discovery. History tab with activate/delete.
+    4. About — version 0.1.0-alpha, links
+
+HistoryDrawer.jsx — Session History
+  Props: isOpen, onClose, onSelectSession, onNewChat, currentSessionId,
+         isPersistent
+  Features:
+    - Two modes: overlay (mini view with backdrop) / persistent (sidebar)
+    - Sessions grouped by time: Today, Yesterday, Previous 7/30 Days, Older
+    - ConversationItem sub-component with rename/delete on hover
+
+ToolCallBlock.jsx — Tool Call Visualization
+  Props: toolCall {toolName, status, output, toolArgs, startedAt, endedAt}
+  Features:
+    - Collapsible block with status indicator
+    - macOS Terminal chrome for execute_terminal_command:
+      • Traffic light dots (red, yellow, green)
+      • Title bar with tool name
+      • Terminal prompt: automicro ~ $
+      • Output with copy button
+      • Exit code badge (green/red)
+      • Elapsed time display
+    - Output truncation: first 25 lines with "Show all" toggle
+    - Status badges: Running, Done, Aborted, Error
+
+ToolCallsList.jsx — Tool Call List Wrapper
+  Simple mapper: commands[] → <ToolCallBlock> components
+
+LoadingScreen.jsx — Splash/Transition Screen
+  Features:
+    - 15 floating particles with random positions
+    - Outer + inner rotating rings around logo
+    - Pulsing logo with glow effect
+    - "Initializing..." text with animated dots
+
+TerminalWindow.jsx — Legacy Terminal (unused)
+  Older terminal output renderer, superseded by ToolCallBlock
+
+
+================================================================================
+8. TAURI DESKTOP SHELL
+================================================================================
+
+Configuration (tauri.conf.json):
+  - Product: AutoMicro-Bot
+  - Identifier: com.automicro.bot
+  - Version: 0.1.0
+  - Window: 360x520, no decorations, transparent, always on top, no shadow
+  - macOSPrivateApi: true (enables transparency on macOS)
+  - External binary (sidecar): binaries/automicro-backend
+  - Dev URL: http://localhost:5173
+
+Rust Logic (src/lib.rs):
+  - In RELEASE builds: spawns the Python backend sidecar binary on
+    127.0.0.1:8765 before the frontend loads
+  - In DEBUG builds: assumes backend is running separately (poetry run start)
+
+Build Process:
+  1. prepare-sidecar.mjs copies back-end/dist/automicro-backend to
+     src-tauri/binaries/automicro-backend-{arch}
+  2. Vite builds the React frontend
+  3. Tauri bundles everything into a native macOS app (.dmg/.app)
+
+
+================================================================================
+9. DATABASE SCHEMA
+================================================================================
+
+Database: automicro.db (SQLite, async via aiosqlite)
+
+TABLE: messages
+  ┌────────────┬──────────┬──────────────────────────────────────────────┐
+  │ Column     │ Type     │ Description                                  │
+  ├────────────┼──────────┼──────────────────────────────────────────────┤
+  │ id         │ INTEGER  │ Primary key, auto-increment                  │
+  │ session_id │ TEXT     │ Session identifier (indexed)                 │
+  │ role       │ TEXT     │ 'user' or 'assistant'                        │
+  │ content    │ TEXT     │ Message text content                         │
+  │ attachment │ TEXT     │ JSON string (name, content, mime_type, size) │
+  │ plan_meta  │ TEXT     │ JSON string (plan metadata, future use)      │
+  │ timestamp  │ TEXT     │ ISO 8601 timestamp                           │
+  └────────────┴──────────┴──────────────────────────────────────────────┘
+  Indexes: session_id, (session_id, timestamp)
+
+TABLE: conversations
+  ┌────────────┬──────────┬──────────────────────────────────────────────┐
+  │ Column     │ Type     │ Description                                  │
+  ├────────────┼──────────┼──────────────────────────────────────────────┤
+  │ session_id │ TEXT     │ Primary key                                  │
+  │ title      │ TEXT     │ Display title (auto-generated or renamed)    │
+  │ created_at │ TEXT     │ ISO 8601 creation timestamp                  │
+  └────────────┴──────────┴──────────────────────────────────────────────┘
+
+TABLE: llm_settings
+  ┌────────────┬──────────┬──────────────────────────────────────────────┐
+  │ Column     │ Type     │ Description                                  │
+  ├────────────┼──────────┼──────────────────────────────────────────────┤
+  │ id         │ INTEGER  │ Primary key (always 1, single-row table)     │
+  │ provider   │ TEXT     │ LLM provider name                            │
+  │ base_url   │ TEXT     │ Provider API base URL                        │
+  │ api_key    │ TEXT     │ API key (nullable)                           │
+  │ model      │ TEXT     │ Model name/identifier                        │
+  │ history_id │ INTEGER  │ FK to llm_history.id (nullable)              │
+  └────────────┴──────────┴──────────────────────────────────────────────┘
+
+TABLE: llm_history
+  ┌────────────┬──────────┬──────────────────────────────────────────────┐
+  │ Column     │ Type     │ Description                                  │
+  ├────────────┼──────────┼──────────────────────────────────────────────┤
+  │ id         │ INTEGER  │ Primary key, auto-increment                  │
+  │ provider   │ TEXT     │ LLM provider name                            │
+  │ base_url   │ TEXT     │ Provider API base URL                        │
+  │ api_key    │ TEXT     │ API key (nullable)                           │
+  │ model      │ TEXT     │ Model name/identifier                        │
+  │ is_active  │ INTEGER  │ 1 if currently active, 0 otherwise           │
+  │ created_at │ TEXT     │ ISO 8601 creation timestamp                  │
+  └────────────┴──────────┴──────────────────────────────────────────────┘
+
+Separate Database: stm.db (LangGraph checkpoint SQLite)
+  - Managed by langgraph-checkpoint-sqlite
+  - Stores conversation state/checkpoints for the ReAct agent
+  - Enables multi-turn conversation memory across sessions
+
+
+================================================================================
+10. LLM PROVIDER SUPPORT
+================================================================================
+
+AutoMicro-Bot supports multiple LLM providers, configurable at runtime:
+
+  ┌──────────────────┬──────────────────┬─────────────────────────────────┐
+  │ Provider Key     │ LangChain Class  │ Notes                           │
+  ├──────────────────┼──────────────────┼─────────────────────────────────┤
+  │ ollama           │ ChatOllama       │ Local Ollama instance           │
+  │ ollama-cloud     │ ChatOllama       │ Remote Ollama endpoint          │
+  │ openai           │ ChatOpenAI       │ OpenAI API (requires key)       │
+  │ openai-compat    │ ChatOpenAI       │ Any OpenAI-compatible API       │
+  │ gemini           │ ChatGoogleGenAI  │ Google Gemini (requires key)    │
+  └──────────────────┴──────────────────┴─────────────────────────────────┘
+
+Default: Ollama with llama3 model on http://localhost:11434
+
+Provider switching:
+  1. User selects provider in SettingsDrawer
+  2. Frontend calls POST /settings/llm
+  3. Backend saves to llm_settings + llm_history tables
+  4. Backend calls reset_agent() to clear the singleton
+  5. Next chat request lazy-initializes with new provider
+
+
+================================================================================
+11. SECURITY & SAFETY SYSTEM
+================================================================================
+
+The safety system has two layers:
+
+Layer 1 — Tool Permission Toggle:
+  The execute_terminal_command tool can be entirely disabled via the
+  @check_permission decorator. When disabled, any tool call returns
+  "Tool execute_terminal_command is currently disabled" without executing.
+
+Layer 2 — Safety Guard Patterns:
+  Seven regex-based guards that block specific dangerous command patterns:
+
+  1. block_destructive_delete (DEFAULT: ON)
+     Blocks: rm -rf /, rm -rf *, srm (secure remove)
+     Why: Prevents accidental filesystem destruction
+
+  2. block_disk_operations (DEFAULT: ON)
+     Blocks: mkfs, wipefs, dd, diskutil erase/partition
+     Why: Prevents disk formatting and raw disk writes
+
+  3. block_system_power (DEFAULT: OFF — currently disabled!)
+     Blocks: shutdown, reboot, halt, poweroff
+     Why: Prevents unintended system restarts
+
+  4. block_system_integrity (DEFAULT: ON)
+     Blocks: csrutil disable, nvram boot-args
+     Why: Prevents SIP and firmware modification
+
+  5. block_remote_code_exec (DEFAULT: ON)
+     Blocks: curl|sh, wget|sh, curl|bash
+     Why: Prevents running untrusted remote scripts
+
+  6. block_permission_changes (DEFAULT: ON)
+     Blocks: chmod 777 /, chown -R /
+     Why: Prevents wide-open filesystem permissions
+
+  7. block_fork_bomb (DEFAULT: ON)
+     Blocks: :(){ :|:& };:, background disown patterns
+     Why: Prevents system resource exhaustion
+
+Custom Rules:
+  Users can add custom rules that appear in the agent's system prompt as
+  ALLOWED or FORBIDDEN instructions. These are advisory (prompt-based)
+  rather than hard-blocked like safety guards.
+
+Locked Tools:
+  The _locked_tools list prevents specific tools from being toggled by
+  the user in the settings UI.
+
+
+================================================================================
+12. VIEW MODES & UI STATES
+================================================================================
+
+AutoMicro-Bot has three distinct view modes:
+
+  ┌─────────────┬────────────┬────────────────────────────────────────────┐
+  │ Mode        │ Window Size│ Description                                │
+  ├─────────────┼────────────┼────────────────────────────────────────────┤
+  │ Bubble      │ 200 x 84   │ Dynamic Island-style floating circle.     │
+  │             │            │ Shows typing status, expands briefly.      │
+  │             │            │ Double-click → mini, Triple-click → full.  │
+  │             │            │ Snaps to screen corners on drag release.   │
+  ├─────────────┼────────────┼────────────────────────────────────────────┤
+  │ Mini        │ 340 x 450  │ Compact floating glass container.          │
+  │ (default)   │ or         │ TitleBar + ChatWindow + InputBar.          │
+  │             │ 360 x 520  │ Overlay drawers for history/settings.      │
+  │             │            │ Glassmorphism design, always on top.        │
+  ├─────────────┼────────────┼────────────────────────────────────────────┤
+  │ Normal      │ 1024 x 768 │ Full desktop layout.                       │
+  │             │            │ Persistent sidebar for chat history.        │
+  │             │            │ Header with bot avatar.                     │
+  │             │            │ Larger chat area + input bar.               │
+  └─────────────┴────────────┴────────────────────────────────────────────┘
+
+Transitions between modes show a 2-second animated LoadingScreen with
+floating particles, rotating rings, and a pulsing logo.
+
+Theme Support:
+  - Dark mode (default): Dark glass surfaces, blue/cyan accents
+  - Light mode: Light glass surfaces, adjusted colors
+  - Persisted to localStorage
+  - Applied via data-theme CSS attribute on <html>
+
+CSS Architecture:
+  - Single file: index.css (1784 lines)
+  - Imports Bootstrap 5
+  - CSS custom properties for theming via [data-theme]
+  - Glassmorphism: backdrop-filter blur + saturation
+  - Animations: msgIn, typing-bounce, pulse-glow, bubblePopIn,
+    normalModeIn, slideInLeft, fadeIn/Out, luminous-pulse, etc.
+
+
+================================================================================
+13. SSE STREAMING PROTOCOL
+================================================================================
+
+The frontend communicates with the backend via Server-Sent Events (SSE)
+for real-time streaming of AI responses.
+
+Request:
+  POST /chat/stream
+  Content-Type: application/json
+  Body: { session_id, message, attachment? }
+
+Response: text/event-stream
+
+Event Types:
+  ┌──────────────┬──────────────────────────────────────────────────────────┐
+  │ Event        │ Data Format / Purpose                                   │
+  ├──────────────┼──────────────────────────────────────────────────────────┤
+  │ token        │ {"content": "partial text"}                             │
+  │              │ Individual text token from the LLM response             │
+  ├──────────────┼──────────────────────────────────────────────────────────┤
+  │ tool_start   │ {"tool": "execute_terminal_command", "args": {...}}     │
+  │              │ Signals that a tool call is beginning                    │
+  ├──────────────┼──────────────────────────────────────────────────────────┤
+  │ tool_command │ {"command": "ls -la"}                                   │
+  │              │ The specific command being executed                      │
+  ├──────────────┼──────────────────────────────────────────────────────────┤
+  │ tool_output  │ {"output": "...result...", "tool": "..."}               │
+  │              │ Result of the tool execution                             │
+  ├──────────────┼──────────────────────────────────────────────────────────┤
+  │ done         │ {"content": "full response text"}                       │
+  │              │ Streaming complete, full assembled response              │
+  ├──────────────┼──────────────────────────────────────────────────────────┤
+  │ error        │ {"error": "error message"}                              │
+  │              │ An error occurred during processing                      │
+  └──────────────┴──────────────────────────────────────────────────────────┘
+
+SSE Format:
+  event: token\n
+  data: {"content": "Hello"}\n
+  \n
+
+Frontend parses the stream using fetch() + ReadableStream reader,
+splitting on double newlines. Supports AbortController for stop.
+
+
+================================================================================
+14. ENVIRONMENT CONFIGURATION
+================================================================================
+
+File: back-end/.env (copy from .env.example)
+
+  ┌─────────────────────────┬─────────────────────────────────────────────┐
+  │ Variable                │ Description                                 │
+  ├─────────────────────────┼─────────────────────────────────────────────┤
+  │ LLM_PROVIDER            │ Default LLM provider (ollama)               │
+  │ OLLAMA_BASE_URL          │ Ollama API URL (http://localhost:11434)      │
+  │ OLLAMA_MODEL             │ Default model name (llama3)                  │
+  │ DB_PATH                  │ SQLite database path (./automicro.db)        │
+  │ CORS_ORIGINS             │ Allowed CORS origins (comma-separated)       │
+  │ MAX_HISTORY_MESSAGES     │ Max messages loaded per session (50)         │
+  └─────────────────────────┴─────────────────────────────────────────────┘
+
+Frontend Base URL (in chat.js / settings.js):
+  - Tauri production: http://127.0.0.1:8765
+  - Development: http://localhost:8000
+
+
+================================================================================
+15. BUILD & DEPLOYMENT
+================================================================================
+
+Development:
+  Terminal 1 (Backend):
+    cd auto-bot/back-end
+    poetry install
+    poetry run start              # FastAPI on 127.0.0.1:8000
+
+  Terminal 2 (Frontend + Tauri):
+    cd auto-bot/front-end
+    npm install
+    npm run tauri:dev             # Vite dev server + Tauri window
+
+Production Build:
+  1. Build Python backend as standalone binary (PyInstaller or similar)
+     Output: back-end/dist/automicro-backend
+
+  2. Build Tauri app:
+     cd auto-bot/front-end
+     npm run tauri:build
+     This triggers:
+       a. prepare-sidecar.mjs → copies backend binary to src-tauri/binaries/
+       b. Vite builds React → front-end/dist/
+       c. Tauri bundles everything → .dmg/.app for macOS
+
+  3. The resulting app contains:
+     - Native macOS window shell (Rust/Tauri)
+     - Bundled React frontend
+     - Sidecar Python backend binary
+     - App icons and metadata
+
+Runtime (Production):
+  1. User opens AutoMicro-Bot.app
+  2. Tauri spawns the sidecar backend on 127.0.0.1:8765
+  3. Frontend webview connects to the local backend
+  4. All data stays on-device
+
+
+================================================================================
+16. DEVELOPMENT SETUP
+================================================================================
+
+Prerequisites:
+  - Node.js v18+
+  - Python v3.11+
+  - Poetry (Python package manager)
+  - Rust (for Tauri builds)
+  - Ollama (installed and running with a model pulled)
+
+Step-by-step:
+  1. Clone the repository
+     git clone <repo-url>
+     cd AutoMicro-bot
+
+  2. Backend setup
+     cd auto-bot/back-end
+     poetry install
+     cp .env.example .env
+     # Edit .env if needed
+     ollama pull llama3
+     poetry run start
+
+  3. Frontend setup (in a new terminal)
+     cd auto-bot/front-end
+     npm install
+     npm run tauri:dev
+
+  4. The app window will appear as a floating transparent widget
+
+  5. To run without Tauri (browser mode):
+     npm run dev
+     # Open http://localhost:5173 in a browser
+
+
+================================================================================
+END OF DOCUMENTATION
+================================================================================
+Generated by: Composer Agent
+Date: April 5, 2026
+Project: AutoMicro-Bot v0.1.0-alpha
+================================================================================

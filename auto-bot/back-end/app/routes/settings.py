@@ -3,7 +3,8 @@ from typing import Optional
 from app.graph.tools.permission_manager import load_permissions, save_permissions
 from app.db.database import (
     get_llm_settings, update_llm_settings,
-    get_llm_history, save_llm_history, delete_llm_history, activate_llm_config
+    get_llm_history, save_llm_history, delete_llm_history, activate_llm_config,
+    get_personality_config, update_personality_config,
 )
 from app.models.schemas import LLMSettings, ChatRequest
 from pydantic import BaseModel
@@ -145,3 +146,48 @@ async def get_available_models_endpoint(provider: str, base_url: str, api_key: O
     except Exception as e:
         logger.error(f"Error fetching models for {provider}: {e}")
         return {"models": []}
+
+
+# ─── Personality Settings (Humanoid Agent) ────────────────────────────────────
+
+@router.get("/personality")
+async def get_personality_endpoint():
+    """Returns the current personality configuration."""
+    config = await get_personality_config()
+    if config:
+        config.pop("id", None)
+        config.pop("updated_at", None)
+    return config or {}
+
+@router.post("/personality")
+async def update_personality_endpoint(config: dict):
+    """Updates the personality configuration."""
+    await update_personality_config(config)
+
+    from app.graph.humanoid.personality_engine import set_personality
+    set_personality(config)
+
+    from app.graph.agent import reset_agent
+    reset_agent()
+
+    return {"status": "success"}
+
+@router.post("/personality/reset")
+async def reset_personality_endpoint():
+    """Resets personality to defaults."""
+    from app.graph.humanoid.config import DEFAULT_PERSONALITY
+    await update_personality_config(DEFAULT_PERSONALITY)
+
+    from app.graph.humanoid.personality_engine import set_personality
+    set_personality(DEFAULT_PERSONALITY)
+
+    from app.graph.agent import reset_agent
+    reset_agent()
+
+    return {"status": "success", "config": DEFAULT_PERSONALITY}
+
+@router.get("/personality/presets")
+async def get_personality_presets():
+    """Returns available personality presets."""
+    from app.graph.humanoid.config import PERSONALITY_PRESETS
+    return PERSONALITY_PRESETS

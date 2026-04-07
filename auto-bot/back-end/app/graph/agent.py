@@ -12,8 +12,16 @@ from langgraph.graph import StateGraph, MessagesState, START
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.prebuilt import create_react_agent
 
-from app.db.database import save_message, get_llm_settings
+from app.db.database import save_message, get_llm_settings, get_personality_config
 from app.graph.tools.permission_manager import load_permissions, BUILTIN_TOOLS
+from app.graph.humanoid.emotion_analyzer import analyze_emotion
+from app.graph.humanoid.rag_retriever import retrieve_context
+from app.graph.humanoid.personality_engine import (
+    build_personality_directives,
+    get_personality,
+    set_personality,
+    update_session_state,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -50,24 +58,121 @@ def reset_agent():
 
 tools = [execute_terminal_command]
 
+
+def _last_human_text(state: MessagesState) -> str:
+    for msg in reversed(state["messages"]):
+        if getattr(msg, "type", "") == "human" or isinstance(msg, HumanMessage):
+            c = msg.content
+            return c if isinstance(c, str) else str(c)
+    return ""
+
+
+def _strip_fiction_tag(user_text: str) -> tuple[bool, str]:
+    """If message starts with [FICTION], return (True, remainder for RAG/emotion)."""
+    s = user_text.lstrip()
+    if not s.upper().startswith("[FICTION]"):
+        return False, user_text
+    rest = s[9:].lstrip()
+    if "\n" in rest:
+        return True, rest.split("\n", 1)[1].strip()
+    return True, rest.strip()
+
+
 def build_system_prompt(state: MessagesState) -> list:
     base_prompt = (
-        "You are AutoMicro-Bot, a helpful, concise AI assistant floating on the user's desktop. "
-        "Keep your responses friendly and brief. Your only action capability is running shell commands "
-        "via the terminal tool when the user needs something done on their machine.\n"
-        "IMPORTANT macOS INSTRUCTIONS:\n"
-        "- Do NOT use the `airport` command for Wi-Fi, it is removed in modern macOS.\n"
-        "- To get the current Wi-Fi SSID, use: `networksetup -getairportnetwork en0`\n"
-        "- To get the Wi-Fi password for an SSID, use: `security find-generic-password -D \"802.11 Password\" -w -a \"<SSID_NAME>\"`\n"
-        "CRITICAL TOOL INSTRUCTION:\n"
-        "- You may write a short, conversational response before running a command if it helps the user understand what you are doing.\n"
-        "- For multiple steps, run one command, read the output, then run the next until the task is complete.\n"
+        "You are AutoMicro-Bot, a powerful AI desktop agent for macOS. "
+        "Keep your responses friendly and brief. You execute shell commands "
+        "via the terminal tool to automate tasks on the user's Mac.\n"
+        "\n"
+        "macOS COMMAND REFERENCE:\n"
+        "- Wi-Fi SSID: `networksetup -getairportnetwork en0` (do NOT use `airport`, it's removed)\n"
+        "- Wi-Fi password: `security find-generic-password -D \"802.11 Password\" -w -a \"<SSID>\"`\n"
+        "- Open apps: `open -a \"App Name\"` or `open /path/to/file`\n"
+        "- System info: `sw_vers` (macOS version), `uname -a`, `sysctl -n hw.memsize`, `df -h`\n"
+        "- Disk info: `diskutil list`, `diskutil info /`\n"
+        "- Process management: `ps aux | grep name`, `kill PID`, `top -l 1 | head -20`\n"
+        "- Network: `ifconfig`, `netstat -an`, `lsof -i :PORT`, `curl -s URL`\n"
+        "- Clipboard: `pbcopy` (write), `pbpaste` (read) — e.g. `echo text | pbcopy`\n"
+        "- Text-to-speech: `say \"message\"` or `say -v Voice \"message\"`\n"
+        "- Notifications: `osascript -e 'display notification \"msg\" with title \"title\"'`\n"
+        "- Dialogs: `osascript -e 'display dialog \"msg\" buttons {\"OK\"}'`\n"
+        "- App control via AppleScript: `osascript -e 'tell application \"Finder\" to ...'`\n"
+        "- Screenshots: `screencapture -x /tmp/screen.png` (silent), `screencapture -ic` (clipboard)\n"
+        "- Power: `pmset -g batt` (battery), `caffeinate -t 300` (prevent sleep 5min)\n"
+        "- Preferences: `defaults read domain key`, `defaults write domain key value`\n"
+        "- Homebrew: `brew install pkg`, `brew list`, `brew update`, `brew upgrade`\n"
+        "- Files: `find ~/path -name \"*.ext\"`, `ls -lahS`, `du -sh *`, `stat file`\n"
+        "- Text processing: `grep -r pattern dir`, `awk`, `sed`, `sort`, `uniq`, `wc -l`\n"
+        "- Archives: `tar -czf out.tar.gz dir/`, `unzip file.zip -d dest/`\n"
+        "- Git: `git status`, `git log --oneline -10`, `git diff`, `git branch`\n"
+        "- Python: `python3 -c \"code\"`, `pip3 install pkg`\n"
+        "\n"
+        "WHEN TO USE TOOLS vs WHEN TO JUST CHAT:\n"
+        "- ONLY use the terminal tool when the user EXPLICITLY asks you to perform a task, run a command, "
+        "check something on their system, open an app, or do something that requires a shell command.\n"
+        "- If the user is chatting casually, venting, sharing feelings, asking questions, having a conversation, "
+        "or saying things like 'I'm stressed', 'how are you', 'tell me a joke', 'I'm bored' — "
+        "respond with a friendly TEXT reply ONLY. Do NOT run any commands.\n"
+        "- NEVER run osascript, say, or notification commands as a response to casual/emotional messages.\n"
+        "- When in doubt, just reply with text. Only use tools when there's a clear system task to perform.\n"
+        "\n"
+        "TOOL INSTRUCTIONS (when tools ARE needed):\n"
+        "- CRITICAL: Call the tool EXACTLY ONCE per user request. Never make multiple parallel tool calls.\n"
+        "- If a task needs multiple steps, run ONE command, wait for the result, then decide the next step.\n"
+        "- Combine related actions into a SINGLE command when possible "
+        "(e.g. `open -a \"Google Chrome\" \"https://www.google.com/search?q=youtube\"` — this opens Chrome AND searches in one command).\n"
+        "- You may write a short, conversational response before running a command.\n"
+        "- Pipe commands together when efficient (e.g. `ls -la | grep .py | wc -l`).\n"
+        "- Commands run in the user's home directory (~) by default.\n"
+        "- Output includes exit codes — check them to detect failures and handle errors.\n"
+        "- Commands have a 60-second timeout. For long operations, warn the user first.\n"
+        "- If the `open` command returns '(no output)' with exit code 0, that means SUCCESS. Do NOT retry it.\n"
+        "\n"
         "INTERRUPTION HANDLING:\n"
-        "- If you are interrupted or the user stops you, do NOT try to explain or 'fix' the situation with more commands or long messages. Simply wait for the next user request."
+        "- If interrupted or stopped, do NOT try to explain or 'fix' with more commands. Simply wait for the next user request."
     )
     # Ensure it's a string to avoid Pyre errors on +=
     base_prompt = str(base_prompt)
-    
+
+    # ── Humanoid Personality Engine ─────────────────────────────────
+    personality = get_personality()
+    last_user_raw = _last_human_text(state)
+    has_fiction_prefix, remainder_after_tag = _strip_fiction_tag(last_user_raw)
+    fiction_active = bool(personality.get("fiction_mode")) or has_fiction_prefix
+
+    if personality.get("social_white_lies"):
+        base_prompt += (
+            "\n\nSOCIAL MODE NOTE: You may use casual, face-saving, or vivid phrasing in plain chat. "
+            "Terminal and tool results are sacred: report exit codes and output exactly; "
+            "never invent or misstate what happened on the Mac."
+        )
+    if fiction_active:
+        from app.graph.humanoid.config import FICTION_MODE_DIRECTIVE
+        base_prompt += FICTION_MODE_DIRECTIVE
+
+    if personality.get("enabled"):
+        last_user_msg = last_user_raw
+        msg_for_emotion = remainder_after_tag if has_fiction_prefix and remainder_after_tag.strip() else last_user_raw
+
+        if last_user_msg:
+            emotion = analyze_emotion(msg_for_emotion)
+            config_key = state.get("configurable", {}).get("thread_id", "default")
+            update_session_state(config_key, emotion)
+            # Fiction mode: skip psychology RAG + personality sliders — they pull "therapist trust"
+            # boundaries that fight in-story betrayal/reveal plots.
+            if not fiction_active:
+                rag_context = retrieve_context(msg_for_emotion, emotion=emotion, personality=personality)
+                if rag_context:
+                    base_prompt += "\n" + rag_context
+                personality_directives = build_personality_directives(config_key, emotion)
+                if personality_directives:
+                    base_prompt += "\n" + personality_directives
+
+    # ── Tanglish Language Mode ─────────────────────────────────────
+    if personality.get("tanglish"):
+        from app.graph.humanoid.config import TANGLISH_DIRECTIVE
+        base_prompt += TANGLISH_DIRECTIVE
+
     perms = load_permissions()
     custom_rules_enabled = []
     custom_rules_disabled = []
@@ -100,10 +205,9 @@ def build_system_prompt(state: MessagesState) -> list:
         safe_messages = []
         for msg in state["messages"]:
             if getattr(msg, "tool_calls", None) or (getattr(msg, "type", "") == "ai" and getattr(msg, "tool_calls", None)):
-                # Strip native tool_calls to bypass Gemini 400 error
-                tool_names = ", ".join([tc.get("name", "tool") for tc in getattr(msg, "tool_calls", [])])
-                content = msg.content or f"I decided to execute tools: {tool_names}."
-                safe_messages.append(AIMessage(content=content))
+                content = msg.content or ""
+                if content.strip():
+                    safe_messages.append(AIMessage(content=content))
             elif getattr(msg, "type", "") == "tool" or isinstance(msg, ToolMessage):
                 # Present the tool result as a HumanMessage so the LLM recognizes it as an external observation
                 # (Using SystemMessage here causes infinite loops because the LLM ignores it and repeats the tool)
@@ -119,6 +223,14 @@ async def get_app():
     """Lazy initializer for the LangGraph app with Async checkpointer."""
     global _agent_app, _saver
     if _agent_app is None:
+        # Load personality config from DB into the engine
+        try:
+            p_conf = await get_personality_config()
+            if p_conf:
+                set_personality(p_conf)
+        except Exception:
+            pass
+
         # Fetch dynamic settings from DB
         conf = await get_llm_settings()
         if not conf:
@@ -182,7 +294,7 @@ async def get_app():
 async def get_agent_response(session_id: str, message: str) -> str:
     """Interface to run the LangGraph model with persistent STM."""
     app = await get_app()
-    config = {"configurable": {"thread_id": session_id}}
+    config = {"configurable": {"thread_id": session_id}, "recursion_limit": 8}
     input_messages = {"messages": [HumanMessage(content=message)]}
     
     await save_message(session_id, "user", message)

@@ -12,6 +12,7 @@ import BubbleView from './components/BubbleView.jsx';
 import LoadingScreen from './components/LoadingScreen.jsx';
 import { streamMessage, clearHistory, getHistory, openTerminal } from './api/chat.js';
 import { getCurrentWindow, LogicalSize, LogicalPosition } from '@tauri-apps/api/window';
+import logo from './assets/automicro_bot_icon_v5.png';
 
 // Generate a random session ID
 function generateSessionId() {
@@ -41,6 +42,21 @@ export default function App() {
   const historyRequestId = useRef(0);
 
   const appWindow = getCurrentWindow();
+
+  // On reload, ensure we never stay stuck in bubble window state.
+  useEffect(() => {
+    const ensureMiniDefaults = async () => {
+      try {
+        setViewMode('mini');
+        await appWindow.setAlwaysOnTop(false);
+        await appWindow.setSize(new LogicalSize(340, 450));
+      } catch (err) {
+        console.error('Failed to restore mini defaults on load:', err);
+      }
+    };
+    ensureMiniDefaults();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Load history if it's an existing session
   useEffect(() => {
@@ -302,7 +318,20 @@ export default function App() {
         }));
         setIsTyping(false);
       },
-      attachment
+      attachment,
+      (tool, args) => {
+        setMessages((prev) => prev.map(m => {
+          if (m.id !== msgId || !m.commands?.length) return m;
+          const newCommands = [...m.commands];
+          for (let i = newCommands.length - 1; i >= 0; i--) {
+            if (newCommands[i]?.status === 'running') {
+              newCommands[i] = { ...newCommands[i], toolArgs: args };
+              break;
+            }
+          }
+          return { ...m, commands: newCommands };
+        }));
+      }
     );
 
     activeStream.current = stream;
@@ -385,45 +414,111 @@ export default function App() {
   if (viewMode === 'normal') {
     return (
       <div className="normal-layout-container w-100 h-100 d-flex overflow-hidden">
-        <HistoryDrawer
-          isOpen={isDrawerOpen} // Use state for visibility
-          onClose={() => setIsDrawerOpen(false)} 
-          onSelectSession={handleSelectSession}
-          onNewChat={handleNewChat}
-          currentSessionId={sessionId}
-          isPersistent={true}
-        />
-        <div className="normal-main-content d-flex flex-column flex-grow-1 position-relative">
-          <TitleBar
-            onClearChat={handleNewChat}
-            onToggleHistory={() => setIsDrawerOpen(!isDrawerOpen)}
-            onMinimize={handleMinimizeToBubble}
-            onOpenSettings={() => setIsSettingsOpen(true)}
-            onNormalMode={handleNormalMode}
-            onFloatingMode={() => handleRestoreFromBubble('mini')}
-            onOpenTerminal={handleOpenTerminal}
-            viewMode={viewMode}
-          />
-          <div className="chat-container-centered d-flex flex-column align-items-center flex-grow-1 overflow-hidden position-relative">
-             {!isDrawerOpen && (
-               <button 
-                 className="sidebar-toggle-floating" 
-                 onClick={() => setIsDrawerOpen(true)}
-                 title="Open Sidebar"
-               >
-                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                   <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="9" y1="3" x2="9" y2="21"/>
-                 </svg>
-               </button>
-             )}
-             <div className="chat-content-wrapper w-100 max-w-3xl d-flex flex-column h-100">
-                <ChatWindow messages={messages} isTyping={isTyping} newMsgId={newMsgId} isNormalMode={true} />
-                <div className="normal-input-wrapper w-100 pb-4">
-                  <InputBar onSend={handleSend} onStop={handleStop} disabled={isTyping} isNormalMode={true} />
-                </div>
-             </div>
+        {/* ── Sidebar ── */}
+        <div className={`normal-sidebar ${isDrawerOpen ? '' : 'is-collapsed'}`}>
+          <div className="normal-sidebar-header">
+            <div className="d-flex align-items-center gap-2" style={{ WebkitAppRegion: 'no-drag' }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline>
+              </svg>
+              <span style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-main)' }}>History</span>
+            </div>
+            <button
+              className="normal-header-btn"
+              onClick={() => setIsDrawerOpen(false)}
+              style={{ width: '28px', height: '28px', borderRadius: '8px' }}
+              title="Close sidebar"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="9" y1="3" x2="9" y2="21"/><polyline points="16 16 12 12 16 8"/>
+              </svg>
+            </button>
           </div>
-          
+          <div className="normal-sidebar-body">
+            <HistoryDrawer
+              isOpen={true}
+              onClose={() => setIsDrawerOpen(false)}
+              onSelectSession={handleSelectSession}
+              onNewChat={handleNewChat}
+              currentSessionId={sessionId}
+              isPersistent={true}
+            />
+          </div>
+        </div>
+
+        {/* ── Main Area ── */}
+        <div className="normal-main-content d-flex flex-column flex-grow-1 position-relative" style={{ minWidth: 0 }}>
+          {/* Header */}
+          <div className="normal-header" data-tauri-drag-region>
+            <div className="normal-header-left">
+              {!isDrawerOpen && (
+                <button
+                  className="normal-header-btn"
+                  onClick={() => setIsDrawerOpen(true)}
+                  title="Open sidebar"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="9" y1="3" x2="9" y2="21"/>
+                  </svg>
+                </button>
+              )}
+
+              <div className="normal-bot-avatar">
+                <div className="normal-bot-avatar-icon">
+                  <img src={logo} alt="AutoMicro-bot" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                </div>
+                <div className="normal-bot-avatar-pulse pulse-glow" />
+              </div>
+
+              <div>
+                <h1 className="m-0 d-flex align-items-center gap-2" style={{ fontSize: '15px', fontWeight: '600', color: 'var(--text-main)' }}>
+                  <span className="text-gradient-primary">Auto</span> micro-Bot
+                </h1>
+                <span className="font-mono" style={{ fontSize: '11px', color: 'var(--muted-foreground)' }}>
+                  online • macOS agent • v1.0
+                </span>
+              </div>
+            </div>
+
+            <div className="normal-header-right">
+              <button className="normal-header-btn" onClick={() => setIsSettingsOpen(true)} title="Settings">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                </svg>
+              </button>
+              <button
+                className="normal-header-btn with-label"
+                onClick={() => handleRestoreFromBubble('mini')}
+                title="Switch to floating mode"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="4 14 10 14 10 20"></polyline><polyline points="20 10 14 10 14 4"></polyline><line x1="14" y1="10" x2="21" y2="3"></line><line x1="3" y1="21" x2="10" y2="14"></line>
+                </svg>
+                <span className="font-mono" style={{ fontSize: '11px' }}>Float</span>
+              </button>
+              <button className="normal-header-btn" onClick={handleMinimizeToBubble} title="Minimize to bubble">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="5" y1="12" x2="19" y2="12" /></svg>
+              </button>
+              <button className="normal-header-btn" onClick={async () => (await getCurrentWindow()).close()} title="Close">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+              </button>
+            </div>
+          </div>
+
+          {/* Chat Area */}
+          <div className="d-flex flex-column flex-grow-1 overflow-hidden">
+            <div className="normal-chat-area">
+              <ChatWindow
+                messages={messages}
+                isTyping={isTyping}
+                newMsgId={newMsgId}
+                isNormalMode={true}
+                onSuggestionClick={(text) => handleSend(text)}
+              />
+              <InputBar onSend={handleSend} onStop={handleStop} disabled={isTyping} />
+            </div>
+          </div>
+
           <SettingsDrawer
             isOpen={isSettingsOpen}
             onClose={() => setIsSettingsOpen(false)}
@@ -445,7 +540,7 @@ export default function App() {
             left: '50%',
             width: '60%',
             height: '1px',
-            background: 'linear-gradient(90deg, transparent, rgba(99,102,241,0.6), transparent)',
+            background: 'linear-gradient(90deg, transparent, rgba(var(--accent-rgb),0.5), transparent)',
             pointerEvents: 'none',
             zIndex: 10
           }}
