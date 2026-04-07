@@ -135,7 +135,10 @@ async def open_terminal_endpoint():
     """Quickly open a local terminal window (macOS)."""
     try:
         import subprocess
-        subprocess.run(["open", "-a", "Terminal", "."], check=True)
+        p = subprocess.Popen(["open", "-a", "Terminal", "."])
+        rc = p.wait()
+        if rc != 0:
+            raise RuntimeError(f"open-terminal exited with code {rc}")
         return {"status": "success"}
     except Exception as e:
         logger.error(f"Failed to open terminal: {e}")

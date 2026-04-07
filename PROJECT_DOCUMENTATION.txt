@@ -170,7 +170,7 @@ AGENT EXECUTION FLOW:
       │                            │
       │                            ├── Permission Check
       │                            ├── Safety Guard Check
-      │                            ├── subprocess.run()
+      │                            ├── subprocess.Popen()
       │                            └── Return output
       │                                 │
       │       ◄──────────────────────────┘
@@ -454,7 +454,7 @@ Purpose: The only tool available to the agent — executes shell commands.
 
 Function: execute_terminal_command(command: str) -> str
   - Decorated with @tool (LangChain) and @check_permission
-  - Runs via subprocess.run() in user's home directory
+  - Runs via subprocess.Popen() in user's home directory
   - 60-second timeout
   - Returns formatted output with exit code and elapsed time
 

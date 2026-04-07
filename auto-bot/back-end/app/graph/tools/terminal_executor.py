@@ -3,6 +3,7 @@ import os
 import re
 import logging
 import time
+import signal
 from pathlib import Path
 from langchain_core.tools import tool
 from app.graph.tools.permission_manager import check_permission, load_permissions
@@ -96,24 +97,59 @@ def execute_terminal_command(command: str) -> str:
     start = time.monotonic()
 
     try:
-        result = subprocess.run(
+        env = {**os.environ, "LANG": "en_US.UTF-8"}
+        p = subprocess.Popen(
             command,
             shell=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
             cwd=cwd,
-            timeout=COMMAND_TIMEOUT,
-            env={**os.environ, "LANG": "en_US.UTF-8"},
+            env=env,
+            start_new_session=True,
         )
+
+        try:
+            stdout, _ = p.communicate(timeout=COMMAND_TIMEOUT)
+        except subprocess.TimeoutExpired:
+            # Best-effort: terminate the whole process group (shell + children).
+            try:
+                os.killpg(p.pid, signal.SIGTERM)
+            except Exception:
+                try:
+                    p.terminate()
+                except Exception:
+                    pass
+
+            try:
+                stdout, _ = p.communicate(timeout=2)
+            except Exception:
+                stdout = ""
+
+            try:
+                os.killpg(p.pid, signal.SIGKILL)
+            except Exception:
+                try:
+                    p.kill()
+                except Exception:
+                    pass
+
+            try:
+                p.communicate(timeout=2)
+            except Exception:
+                pass
+
+            elapsed = round(time.monotonic() - start, 2)
+            return (
+                f"[exit_code: -1] [elapsed: {elapsed}s]\n"
+                f"Error: Command timed out after {COMMAND_TIMEOUT}s and was killed."
+            )
+
         elapsed = round(time.monotonic() - start, 2)
-        output = result.stdout.strip() if result.stdout else ""
-        if not output and result.returncode == 0:
+        output = stdout.strip() if stdout else ""
+        if not output and p.returncode == 0:
             output = "(no output)"
-        return f"[exit_code: {result.returncode}] [elapsed: {elapsed}s]\n{output}"
-    except subprocess.TimeoutExpired:
-        elapsed = round(time.monotonic() - start, 2)
-        return f"[exit_code: -1] [elapsed: {elapsed}s]\nError: Command timed out after {COMMAND_TIMEOUT}s and was killed."
+        return f"[exit_code: {p.returncode}] [elapsed: {elapsed}s]\n{output}"
     except Exception as e:
         elapsed = round(time.monotonic() - start, 2)
         logger.error(f"Error executing command: {e}")
