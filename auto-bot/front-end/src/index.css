@@ -1,6 +1,34 @@
 @import "bootstrap/dist/css/bootstrap.min.css";
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap');
 
+/* Default theme variables (so web render never "blanks" before JS runs) */
+:root {
+  --glass-bg: rgba(12, 12, 12, 0.82);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-blur: 28px;
+  --glass-radius: 12px;
+  --accent: hsl(217, 91%, 60%);
+  --accent-rgb: 59, 130, 246;
+  --accent-glow: rgba(59, 130, 246, 0.35);
+  --accent-subtle: rgba(59, 130, 246, 0.12);
+  --online-dot: hsl(217, 91%, 60%);
+  --user-bubble: rgba(255, 255, 255, 0.14);
+  --bot-bubble: hsl(217, 91%, 60%);
+  --bot-bubble-text: hsl(0, 0%, 100%);
+  --text-main: hsl(0, 0%, 95%);
+  --text-secondary: hsl(0, 0%, 55%);
+  --bg-main: hsl(0, 0%, 4%);
+  --bg-surface: hsl(0, 0%, 7%);
+  --sidebar-bg: hsl(0, 0%, 3.5%);
+  --drawer-bg: rgba(10, 10, 10, 0.98);
+  --input-bg: rgba(255, 255, 255, 0.06);
+  --scrollbar-thumb: rgba(255, 255, 255, 0.1);
+  --border-subtle: rgba(255, 255, 255, 0.06);
+  --island-bg: rgba(10, 10, 10, 0.92);
+  --island-border: rgba(255, 255, 255, 0.12);
+  --muted-foreground: hsl(0, 0%, 55%);
+}
+
 :root[data-theme='dark'] {
   --glass-bg: rgba(12, 12, 12, 0.82);
   --glass-border: rgba(255, 255, 255, 0.08);
@@ -72,12 +100,19 @@ body,
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background: transparent !important;
+  background: var(--bg-main);
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   color: var(--text-main);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   user-select: none;
+}
+
+/* Tauri app windows often want transparent backgrounds */
+html[data-platform='tauri'],
+html[data-platform='tauri'] body,
+html[data-platform='tauri'] #root {
+  background: transparent !important;
 }
 
 ::-webkit-scrollbar {

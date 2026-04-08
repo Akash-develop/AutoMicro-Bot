@@ -1,21 +1,38 @@
 import { useState, useEffect, useRef } from 'react';
-import { getCurrentWindow } from '@tauri-apps/api/window';
 import logo from '../assets/automicro_bot_icon_v5.png';
+import { isTauri } from '../utils/platform.js';
 
 export default function TitleBar({ onClearChat, onToggleHistory, onMinimize, onOpenSettings, onNormalMode, onFloatingMode, onOpenTerminal, viewMode }) {
-    const appWindow = getCurrentWindow();
+    const appWindowRef = useRef(null);
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const menuRef = useRef(null);
 
+    useEffect(() => {
+        let cancelled = false;
+        const initWindow = async () => {
+            if (!isTauri()) return;
+            try {
+                const { getCurrentWindow } = await import('@tauri-apps/api/window');
+                if (!cancelled) appWindowRef.current = getCurrentWindow();
+            } catch (err) {
+                console.warn('Tauri window API unavailable; running in web mode.', err);
+            }
+        };
+        initWindow();
+        return () => {
+            cancelled = true;
+        };
+    }, []);
+
     const handleClose = async () => {
-        await appWindow.close();
+        if (appWindowRef.current) await appWindowRef.current.close();
     };
 
     const handleMinimize = async () => {
         if (onMinimize) {
             onMinimize();
         } else {
-            await appWindow.minimize();
+            if (appWindowRef.current) await appWindowRef.current.minimize();
         }
     };
 

@@ -11,8 +11,8 @@ import SettingsDrawer from './components/SettingsDrawer.jsx';
 import BubbleView from './components/BubbleView.jsx';
 import LoadingScreen from './components/LoadingScreen.jsx';
 import { streamMessage, clearHistory, getHistory, openTerminal } from './api/chat.js';
-import { getCurrentWindow, LogicalSize, LogicalPosition } from '@tauri-apps/api/window';
 import logo from './assets/automicro_bot_icon_v5.png';
+import { isTauri } from './utils/platform.js';
 
 // Generate a random session ID
 function generateSessionId() {
@@ -41,13 +41,47 @@ export default function App() {
   const activeStream = useRef(null);
   const historyRequestId = useRef(0);
 
-  const appWindow = getCurrentWindow();
+  const tauriWindowApi = useRef(null);
+
+  const ensureTauriWindowApi = useCallback(async () => {
+    if (tauriWindowApi.current) return tauriWindowApi.current;
+    if (!isTauri()) return null;
+    try {
+      const mod = await import('@tauri-apps/api/window');
+      tauriWindowApi.current = mod;
+      return mod;
+    } catch (err) {
+      console.warn('Tauri window API unavailable; running in web mode.', err);
+      return null;
+    }
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadTauri = async () => {
+      if (!isTauri()) return;
+      try {
+        const mod = await import('@tauri-apps/api/window');
+        if (!cancelled) tauriWindowApi.current = mod;
+      } catch (err) {
+        console.warn('Tauri window API unavailable; running in web mode.', err);
+      }
+    };
+    loadTauri();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // On reload, ensure we never stay stuck in bubble window state.
   useEffect(() => {
     const ensureMiniDefaults = async () => {
       try {
         setViewMode('mini');
+        const api = tauriWindowApi.current;
+        if (!api) return;
+        const { getCurrentWindow, LogicalSize } = api;
+        const appWindow = getCurrentWindow();
         await appWindow.setAlwaysOnTop(false);
         await appWindow.setSize(new LogicalSize(340, 450));
       } catch (err) {
@@ -84,6 +118,14 @@ export default function App() {
   const handleNormalMode = async () => {
     setIsAppLoading(true);
     setViewMode('normal');
+    const api = tauriWindowApi.current;
+    if (!api) {
+      // Web mode: no native window operations; just transition the UI.
+      setIsAppLoading(false);
+      return;
+    }
+    const { getCurrentWindow, LogicalSize } = api;
+    const appWindow = getCurrentWindow();
     // Desktop size for Normal Mode
     await appWindow.setSize(new LogicalSize(1024, 768));
     await appWindow.center();
@@ -103,6 +145,7 @@ export default function App() {
 
   // Apply theme to document
   useEffect(() => {
+    document.documentElement.setAttribute('data-platform', isTauri() ? 'tauri' : 'web');
     document.documentElement.setAttribute('data-theme', theme);
     localStorage.setItem('automicro_theme', theme);
   }, [theme]);
@@ -113,6 +156,10 @@ export default function App() {
 
   const handleMinimizeToBubble = async () => {
     setViewMode('bubble');
+    const api = tauriWindowApi.current || (await ensureTauriWindowApi());
+    if (!api) return;
+    const { getCurrentWindow, LogicalSize } = api;
+    const appWindow = getCurrentWindow();
     // Shrink window to bubble size (enough width for Dynamic Island expansion)
     await appWindow.setSize(new LogicalSize(200, 84));
     await appWindow.setAlwaysOnTop(true);
@@ -121,6 +168,15 @@ export default function App() {
   const handleRestoreFromBubble = async (mode) => {
     setIsAppLoading(true);
     setViewMode(mode);
+
+    const api = tauriWindowApi.current;
+    if (!api) {
+      // Web mode: no native window operations; just transition the UI.
+      setIsAppLoading(false);
+      return;
+    }
+    const { getCurrentWindow, LogicalSize, LogicalPosition } = api;
+    const appWindow = getCurrentWindow();
 
     const width = mode === 'mini' ? 340 : 360;
     const height = mode === 'mini' ? 450 : 520;
@@ -160,6 +216,10 @@ export default function App() {
 
     const initSnapping = async () => {
       if (viewMode === 'bubble') {
+        const api = tauriWindowApi.current;
+        if (!api) return;
+        const { getCurrentWindow, LogicalPosition } = api;
+        const appWindow = getCurrentWindow();
         // Initial snap to bottom right
         const monitor = await appWindow.currentMonitor();
         if (monitor) {
@@ -200,7 +260,7 @@ export default function App() {
       if (unlisten) unlisten();
       clearTimeout(snapTimeout);
     };
-  }, [viewMode, appWindow]);
+  }, [viewMode]);
 
   // Add a message to the list
   const addMessage = (role, content, attachment = null) => {
@@ -499,7 +559,16 @@ export default function App() {
               <button className="normal-header-btn" onClick={handleMinimizeToBubble} title="Minimize to bubble">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="5" y1="12" x2="19" y2="12" /></svg>
               </button>
-              <button className="normal-header-btn" onClick={async () => (await getCurrentWindow()).close()} title="Close">
+              <button
+                className="normal-header-btn"
+                onClick={async () => {
+                  const api = tauriWindowApi.current;
+                  if (!api) return;
+                  const { getCurrentWindow } = api;
+                  await getCurrentWindow().close();
+                }}
+                title="Close"
+              >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
               </button>
             </div>

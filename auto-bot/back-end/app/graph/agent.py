@@ -2,6 +2,7 @@ import os
 import logging
 import sqlite3
 import asyncio
+import time
 from dotenv import load_dotenv
 
 from langchain_ollama import ChatOllama
@@ -36,6 +37,38 @@ _current_provider = "ollama"  # Track provider for specialized message formattin
 _current_model = "llama3"     # Track model name in case provider is aliased
 STM_DB_PATH = os.getenv("STM_DB_PATH", "stm.db")
 _saver_ctx = None  # To track the active context manager
+
+def _rotate_corrupt_sqlite_db(db_path: str) -> str:
+    """Move a corrupt SQLite DB (and WAL/SHM) aside, return new path.
+
+    This is used for the LangGraph checkpointer DB only. We prefer restoring service
+    over keeping a broken checkpoint history.
+    """
+    ts = time.strftime("%Y%m%d-%H%M%S")
+    base_backup = f"{db_path}.corrupt.{ts}"
+
+    def _try_replace(src: str, dst: str) -> None:
+        if os.path.exists(src):
+            os.replace(src, dst)
+
+    _try_replace(db_path, base_backup)
+    _try_replace(f"{db_path}-wal", f"{base_backup}-wal")
+    _try_replace(f"{db_path}-shm", f"{base_backup}-shm")
+    return db_path
+
+def _sqlite_quick_check_ok(db_path: str) -> bool:
+    """Return True if SQLite quick_check reports 'ok'."""
+    if not os.path.exists(db_path):
+        return True
+    try:
+        con = sqlite3.connect(db_path)
+        try:
+            row = con.execute("PRAGMA quick_check;").fetchone()
+            return bool(row) and str(row[0]).lower() == "ok"
+        finally:
+            con.close()
+    except Exception:
+        return False
 
 def reset_agent():
     """Global hook to clear the singleton and force re-init with new settings.
@@ -285,10 +318,27 @@ async def get_app():
         # AsyncSqliteSaver.from_conn_string returns an async context manager
         if _saver is None:
             global _saver_ctx
-            _saver_ctx = AsyncSqliteSaver.from_conn_string(STM_DB_PATH)
-            _saver = await _saver_ctx.__aenter__()
+            # If the checkpoint DB is corrupted, it may not fail until the first write.
+            # Proactively check health and rotate before opening.
+            if not _sqlite_quick_check_ok(STM_DB_PATH):
+                logger.error(f"Checkpoint DB failed quick_check; rotating: {STM_DB_PATH}")
+                _rotate_corrupt_sqlite_db(STM_DB_PATH)
+            try:
+                _saver_ctx = AsyncSqliteSaver.from_conn_string(STM_DB_PATH)
+                _saver = await _saver_ctx.__aenter__()
+            except sqlite3.DatabaseError as e:
+                # e.g. "database disk image is malformed"
+                logger.error(f"Checkpoint DB is corrupt ({STM_DB_PATH}): {e}")
+                try:
+                    _rotate_corrupt_sqlite_db(STM_DB_PATH)
+                    _saver_ctx = AsyncSqliteSaver.from_conn_string(STM_DB_PATH)
+                    _saver = await _saver_ctx.__aenter__()
+                    logger.warning("Checkpoint DB rotated and recreated successfully.")
+                except Exception as rotate_err:
+                    logger.exception(f"Failed to rotate/recreate checkpoint DB: {rotate_err}")
+                    raise
         
-        _agent_app = create_react_agent(llm, tools=tools, checkpointer=_saver, state_modifier=build_system_prompt)
+        _agent_app = create_react_agent(llm, tools=tools, checkpointer=_saver, prompt=build_system_prompt)
     return _agent_app
 
 async def get_agent_response(session_id: str, message: str) -> str:
