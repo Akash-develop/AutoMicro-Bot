@@ -47,7 +47,16 @@ async def root():
     return {"message": "AutoMicro-Bot API is running", "status": "online"}
 
 def start():
-    uvicorn.run("app.main:app", host="127.0.0.1", port=8000, reload=True)
+    """Entry point for `poetry run start` and the packaged Tauri sidecar.
+
+    Env:
+      HOST / PORT — Tauri sidecar uses 127.0.0.1:8765 (see src-tauri).
+      UVICORN_RELOAD — default "1" for dev; sidecar should set "0".
+    """
+    host = os.getenv("HOST", "127.0.0.1")
+    port = int(os.getenv("PORT", "8000"))
+    reload = os.getenv("UVICORN_RELOAD", "1").strip().lower() in ("1", "true", "yes", "on")
+    uvicorn.run("app.main:app", host=host, port=port, reload=reload)
 
 if __name__ == "__main__":
     start()

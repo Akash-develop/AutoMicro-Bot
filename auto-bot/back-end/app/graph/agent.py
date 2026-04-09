@@ -27,16 +27,24 @@ from app.graph.humanoid.personality_engine import (
 logger = logging.getLogger(__name__)
 
 from app.graph.tools.terminal_executor import execute_terminal_command
+from app.graph.tools.todo_tools import read_todos, write_todos
 
 load_dotenv()
 
 # ── Global Agent State ───────────────────────────────────────────
-_agent_app = None
+_agent_apps: dict[str, object] = {}
+_llm = None
 _saver = None
 _current_provider = "ollama"  # Track provider for specialized message formatting
 _current_model = "llama3"     # Track model name in case provider is aliased
 STM_DB_PATH = os.getenv("STM_DB_PATH", "stm.db")
 _saver_ctx = None  # To track the active context manager
+
+# LangGraph: remaining_steps ≈ recursion_limit − step. A high limit allows many agent↔tool
+# cycles per *one* user message (e.g. recursion_limit 8 often yields ~4 agent passes with
+# execute_terminal_command). Default caps at roughly one tool round (agent → tools → agent).
+# Override with AUTOMICRO_AGENT_RECURSION_LIMIT (e.g. 8) if tasks need multiple tool calls.
+DEFAULT_AGENT_RECURSION_LIMIT = int(os.getenv("AUTOMICRO_AGENT_RECURSION_LIMIT", "8"))
 
 def _rotate_corrupt_sqlite_db(db_path: str) -> str:
     """Move a corrupt SQLite DB (and WAL/SHM) aside, return new path.
@@ -75,8 +83,9 @@ def reset_agent():
     Bug #4 fix: also clears _saver so the SQLite checkpointer connection
     is cleanly re-opened on next get_app() call (prevents file-handle leaks).
     """
-    global _agent_app, _saver, _saver_ctx
-    _agent_app = None
+    global _agent_apps, _llm, _saver, _saver_ctx
+    _agent_apps.clear()
+    _llm = None
     # Bug #4 fix: cleanly shut down and clear saver
     if _saver_ctx:
         # Note: In a real app we'd await _saver_ctx.__aexit__(None, None, None)
@@ -89,7 +98,17 @@ def reset_agent():
 
 # ── LangGraph Setup ───────────────────────────────────────
 
-tools = [execute_terminal_command]
+PLAN_MODE_TOOLS = [execute_terminal_command, write_todos, read_todos]
+CHAT_MODE_TOOLS: list = []
+
+CHAT_MODE_SYSTEM = (
+    "You are AutoMicro-Bot, a friendly chat assistant.\n"
+    "\n"
+    "CHAT MODE RULES:\n"
+    "- You have NO tools (no terminal, no automation). Reply with text only.\n"
+    "- Do not claim you opened apps or ran commands.\n"
+    "- If the user asks you to do actions on macOS, tell them to switch to Plan mode.\n"
+)
 
 
 def _last_human_text(state: MessagesState) -> str:
@@ -150,10 +169,16 @@ def build_system_prompt(state: MessagesState) -> list:
         "- When in doubt, just reply with text. Only use tools when there's a clear system task to perform.\n"
         "\n"
         "TOOL INSTRUCTIONS (when tools ARE needed):\n"
-        "- CRITICAL: Call the tool EXACTLY ONCE per user request. Never make multiple parallel tool calls.\n"
-        "- If a task needs multiple steps, run ONE command, wait for the result, then decide the next step.\n"
+        "- CRITICAL — ONE USER MESSAGE ⇒ ONE TOOL CALL WHENEVER POSSIBLE: If the user gives a scripted sequence in a single message "
+        "(e.g. open Chrome, wait 2s, search X, wait 7s, search Y), implement the whole sequence as ONE shell string passed to "
+        "`execute_terminal_command`. Use `&&` to stop on failure, `;` to continue, and `sleep N` for waits. "
+        "For searches, open URLs directly, e.g. `open -a \"Google Chrome\" \"https://www.google.com/search?q=QUERY\"` "
+        "(encode spaces in QUERY as + or %20). Do not split that into multiple tool rounds.\n"
+        "- Never make multiple parallel tool calls in one model turn.\n"
+        "- Only use a second tool call in a later turn if the first output is required to decide what to do next "
+        "(rare). Do not chain tool calls just to mirror each sentence of the user.\n"
         "- Combine related actions into a SINGLE command when possible "
-        "(e.g. `open -a \"Google Chrome\" \"https://www.google.com/search?q=youtube\"` — this opens Chrome AND searches in one command).\n"
+        "(e.g. `open -a \"Google Chrome\" \"https://www.google.com/search?q=youtube\"` — opens Chrome and searches in one command).\n"
         "- You may write a short, conversational response before running a command.\n"
         "- Pipe commands together when efficient (e.g. `ls -la | grep .py | wc -l`).\n"
         "- Commands run in the user's home directory (~) by default.\n"
@@ -252,10 +277,22 @@ def build_system_prompt(state: MessagesState) -> list:
     # Default: Return pristine messages for OpenAI, Ollama, etc.
     return [SystemMessage(content=base_prompt)] + state["messages"]
 
-async def get_app():
+
+def build_chat_prompt(state: MessagesState) -> list:
+    """Prompt for chat-only mode (no tools)."""
+    return [SystemMessage(content=CHAT_MODE_SYSTEM)] + state["messages"]
+
+
+async def get_app(agent_mode: str = "plan"):
     """Lazy initializer for the LangGraph app with Async checkpointer."""
-    global _agent_app, _saver
-    if _agent_app is None:
+    global _agent_apps, _llm, _saver
+    if agent_mode not in ("chat", "plan"):
+        agent_mode = "plan"
+
+    # Special executor key used by streaming endpoint to stop after first tools pass.
+    cache_key = agent_mode
+
+    if _agent_apps.get(cache_key) is None:
         # Load personality config from DB into the engine
         try:
             p_conf = await get_personality_config()
@@ -264,56 +301,53 @@ async def get_app():
         except Exception:
             pass
 
-        # Fetch dynamic settings from DB
-        conf = await get_llm_settings()
-        if not conf:
-            # Fallback if DB not ready (unlikely after init_db)
-            conf = {
-                "provider": "ollama",
-                "base_url": "http://localhost:11434",
-                "api_key": "",
-                "model": "llama3"
-            }
-
-        # Initialize LLM based on settings
-        provider = conf['provider'].lower()
+        # Initialize LLM once (shared by both modes)
         global _current_provider, _current_model
-        _current_provider = provider
-        _current_model = conf['model'].lower()
-        
-        base_url = conf.get('base_url', '').strip()
+        if _llm is None:
+            conf = await get_llm_settings()
+            if not conf:
+                conf = {
+                    "provider": "ollama",
+                    "base_url": "http://localhost:11434",
+                    "api_key": "",
+                    "model": "llama3",
+                }
 
-        if provider in ("openai", "openai-compat"):
-            llm = ChatOpenAI(
-                model=conf['model'],
-                base_url=base_url,
-                api_key=conf['api_key'],
-                temperature=0.7
-            )
-        elif provider == "gemini":
-            llm = ChatGoogleGenerativeAI(
-                model=conf['model'],
-                google_api_key=conf['api_key'],
-                temperature=0.7
-            )
-        elif provider in ("ollama", "ollama-cloud"):
-            headers = None
-            if provider == "ollama-cloud" and conf.get('api_key'):
-                headers = {'Authorization': f"Bearer {conf['api_key']}"}
-            
-            llm = ChatOllama(
-                model=conf['model'],
-                base_url=base_url or "http://localhost:11434",
-                client_kwargs={"headers": headers} if headers else {},
-                temperature=0.7
-            )
-        else:
-            # Default to Ollama if unknown
-            llm = ChatOllama(
-                model=conf['model'],
-                base_url=base_url or "http://localhost:11434",
-                temperature=0.7
-            )
+            provider = conf["provider"].lower()
+            _current_provider = provider
+            _current_model = conf["model"].lower()
+            base_url = conf.get("base_url", "").strip()
+
+            if provider in ("openai", "openai-compat"):
+                _llm = ChatOpenAI(
+                    model=conf["model"],
+                    base_url=base_url,
+                    api_key=conf["api_key"],
+                    temperature=0.7,
+                )
+            elif provider == "gemini":
+                _llm = ChatGoogleGenerativeAI(
+                    model=conf["model"],
+                    google_api_key=conf["api_key"],
+                    temperature=0.7,
+                )
+            elif provider in ("ollama", "ollama-cloud"):
+                headers = None
+                if provider == "ollama-cloud" and conf.get("api_key"):
+                    headers = {"Authorization": f"Bearer {conf['api_key']}"}
+
+                _llm = ChatOllama(
+                    model=conf["model"],
+                    base_url=base_url or "http://localhost:11434",
+                    client_kwargs={"headers": headers} if headers else {},
+                    temperature=0.7,
+                )
+            else:
+                _llm = ChatOllama(
+                    model=conf["model"],
+                    base_url=base_url or "http://localhost:11434",
+                    temperature=0.7,
+                )
 
         # AsyncSqliteSaver.from_conn_string returns an async context manager
         if _saver is None:
@@ -338,13 +372,52 @@ async def get_app():
                     logger.exception(f"Failed to rotate/recreate checkpoint DB: {rotate_err}")
                     raise
         
-        _agent_app = create_react_agent(llm, tools=tools, checkpointer=_saver, prompt=build_system_prompt)
-    return _agent_app
+        tools_for_mode = CHAT_MODE_TOOLS if agent_mode == "chat" else PLAN_MODE_TOOLS
+        prompt_for_mode = build_chat_prompt if agent_mode == "chat" else build_system_prompt
 
-async def get_agent_response(session_id: str, message: str) -> str:
+        _agent_apps[agent_mode] = create_react_agent(
+            _llm,
+            tools=tools_for_mode,
+            checkpointer=_saver,
+            prompt=prompt_for_mode,
+        )
+    return _agent_apps[agent_mode]
+
+
+async def get_app_interrupt_after_tools(agent_mode: str = "plan"):
+    """Like get_app(), but interrupts after the `tools` node (prevents repeated tool loops)."""
+    global _agent_apps
+    if agent_mode not in ("chat", "plan"):
+        agent_mode = "plan"
+    cache_key = f"{agent_mode}:after_tools"
+    if _agent_apps.get(cache_key) is None:
+        await get_app(agent_mode=agent_mode)
+        # Rebuild with interrupt_after only for plan mode; chat mode has no tools anyway.
+        if agent_mode == "plan":
+            _agent_apps[cache_key] = create_react_agent(
+                _llm,
+                tools=PLAN_MODE_TOOLS,
+                checkpointer=_saver,
+                prompt=build_system_prompt,
+                interrupt_after=["tools"],
+            )
+        else:
+            _agent_apps[cache_key] = _agent_apps.get("chat")
+    return _agent_apps[cache_key]
+
+
+async def get_llm():
+    """Return initialized chat model (shared)."""
+    await get_app(agent_mode="chat")
+    return _llm
+
+async def get_agent_response(session_id: str, message: str, agent_mode: str = "plan") -> str:
     """Interface to run the LangGraph model with persistent STM."""
-    app = await get_app()
-    config = {"configurable": {"thread_id": session_id}, "recursion_limit": 8}
+    app = await get_app(agent_mode=agent_mode)
+    config = {
+        "configurable": {"thread_id": session_id},
+        "recursion_limit": DEFAULT_AGENT_RECURSION_LIMIT,
+    }
     input_messages = {"messages": [HumanMessage(content=message)]}
     
     await save_message(session_id, "user", message)

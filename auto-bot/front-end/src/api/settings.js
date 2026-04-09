@@ -3,9 +3,9 @@
  * API calls for managing tool permissions.
  */
 
-const BACKEND_PORT_TAURI_PROD = '8765';
-import { isTauri } from '../utils/platform.js';
-const BASE_URL = isTauri() ? `http://127.0.0.1:${BACKEND_PORT_TAURI_PROD}` : 'http://localhost:8000';
+import { getBackendBaseUrl } from './backendUrl.js';
+
+const BASE_URL = getBackendBaseUrl();
 
 export async function getPermissions() {
   const res = await fetch(`${BASE_URL}/settings/permissions`);

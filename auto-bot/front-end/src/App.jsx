@@ -39,6 +39,7 @@ export default function App() {
   const [isAppLoading, setIsAppLoading] = useState(true);
   const [theme, setTheme] = useState(localStorage.getItem('automicro_theme') || 'dark');
   const activeStream = useRef(null);
+  const sendLockRef = useRef(false);
   const historyRequestId = useRef(0);
 
   const tauriWindowApi = useRef(null);
@@ -285,7 +286,11 @@ export default function App() {
     output: '',
   });
 
-  const handleSend = useCallback((text, attachment = null) => {
+  const handleSend = useCallback((text, attachment = null, mode = 'plan') => {
+    if (sendLockRef.current) {
+      return;
+    }
+    sendLockRef.current = true;
     addMessage('user', text, attachment);
     setIsTyping(true);
 
@@ -353,7 +358,23 @@ export default function App() {
         setIsTyping(true);
       },
       () => {
+        // If the backend finishes without emitting tool_output for a started tool
+        // (e.g. client disconnects or duplicate tool_start), ensure UI doesn't
+        // leave a tool card stuck in "running".
+        setMessages((prev) => prev.map(m => {
+          if (m.id !== msgId || !m.commands?.length) return m;
+          const now = new Date().toISOString();
+          return {
+            ...m,
+            commands: m.commands.map(cmd =>
+              cmd.status === 'running'
+                ? { ...cmd, status: 'aborted', endedAt: now }
+                : cmd
+            )
+          };
+        }));
         setIsTyping(false);
+        sendLockRef.current = false;
       },
       (err) => {
         setMessages((prev) => prev.map(m => m.id === msgId ? { ...m, content: m.content + `\n⚠️ Error: ${err.message}` } : m));
@@ -377,6 +398,7 @@ export default function App() {
           return { ...m, commands: newCommands };
         }));
         setIsTyping(false);
+        sendLockRef.current = false;
       },
       attachment,
       (tool, args) => {
@@ -391,7 +413,8 @@ export default function App() {
           }
           return { ...m, commands: newCommands };
         }));
-      }
+      },
+      mode
     );
 
     activeStream.current = stream;
@@ -402,6 +425,7 @@ export default function App() {
       activeStream.current.close();
       activeStream.current = null;
       setIsTyping(false);
+      sendLockRef.current = false;
       
       // Clear any pending tool results in the active message
       if (newMsgId) {

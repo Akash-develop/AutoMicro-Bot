@@ -31,7 +31,7 @@ export default function InputBar({ onSend, onStop, disabled }) {
                     content: e.target.result,
                     mime_type: selectedFile.type,
                     size: selectedFile.size
-                });
+                }, mode);
                 setSelectedFile(null);
             };
             if (selectedFile.type.startsWith('image/')) {
@@ -40,7 +40,7 @@ export default function InputBar({ onSend, onStop, disabled }) {
                 reader.readAsText(selectedFile);
             }
         } else {
-            onSend(trimmed);
+            onSend(trimmed, null, mode);
         }
 
         setValue('');

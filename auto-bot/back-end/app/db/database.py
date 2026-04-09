@@ -40,6 +40,17 @@ async def init_db():
             )
         """)
 
+        # Plan mode: persisted todo list per chat session (write_todos / read_todos)
+        await db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS session_todos (
+                session_id TEXT PRIMARY KEY,
+                todos_json TEXT NOT NULL DEFAULT '[]',
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+
         # LLM Settings table (Current Active Configuration)
         await db.execute("""
             CREATE TABLE IF NOT EXISTS llm_settings (
@@ -293,7 +304,45 @@ async def clear_history(session_id: str):
     """Delete all messages for a session (keeps conversation record)."""
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("DELETE FROM messages WHERE session_id = ?", (session_id,))
+        await db.execute("DELETE FROM session_todos WHERE session_id = ?", (session_id,))
         await db.commit()
+
+
+async def save_session_todos(session_id: str, todos: list) -> None:
+    """Persist the full todo list for Plan mode (replaces previous list)."""
+    import json
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            """
+            INSERT INTO session_todos (session_id, todos_json, updated_at)
+            VALUES (?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(session_id) DO UPDATE SET
+                todos_json = excluded.todos_json,
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            (session_id, json.dumps(todos)),
+        )
+        await db.commit()
+
+
+async def load_session_todos(session_id: str) -> list:
+    """Load persisted todos for a session; returns [] if none."""
+    import json
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT todos_json FROM session_todos WHERE session_id = ?",
+            (session_id,),
+        ) as cursor:
+            row = await cursor.fetchone()
+            if not row or not row[0]:
+                return []
+            try:
+                data = json.loads(row[0])
+                return data if isinstance(data, list) else []
+            except Exception:
+                return []
 
 
 async def get_all_sessions():

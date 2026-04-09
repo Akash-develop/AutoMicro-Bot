@@ -4,22 +4,46 @@ FastAPI routes for standard Chat POST and WebSocket streaming.
 """
 import json
 import logging
+import time
+import sqlite3
+import os
 from fastapi import APIRouter, HTTPException, Request
 from starlette.responses import StreamingResponse
 from app.models.schemas import (
     ChatRequest, ChatResponse, HistoryResponse, MessageRecord,
     DeleteResponse, SessionSummary, RenameRequest, ChatStreamRequest
 )
-from app.graph.agent import get_agent_response, get_app
+from app.graph.agent import (
+    get_agent_response,
+    get_app,
+    get_app_interrupt_after_tools,
+    DEFAULT_AGENT_RECURSION_LIMIT,
+)
 from app.db.database import (
     get_history, clear_history, save_message,
     get_all_conversations, create_conversation, rename_conversation,
     delete_conversation, is_first_message
 )
-from langchain_core.messages import HumanMessage, AIMessage
+from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+_STM_DB_PATH = os.getenv("STM_DB_PATH", "stm.db")
+
+def _clear_thread_checkpoints(thread_id: str) -> None:
+    """Clear LangGraph sqlite checkpointer state for one thread_id."""
+    try:
+        con = sqlite3.connect(_STM_DB_PATH)
+        try:
+            con.execute("DELETE FROM writes WHERE thread_id = ?", (thread_id,))
+            con.execute("DELETE FROM checkpoints WHERE thread_id = ?", (thread_id,))
+            con.commit()
+        finally:
+            con.close()
+    except Exception:
+        # Best-effort only; if this fails we will surface the original error.
+        pass
 
 
 def make_title(message: str, max_len: int = 50) -> str:
@@ -38,7 +62,7 @@ async def chat_endpoint(req: ChatRequest):
         if await is_first_message(req.session_id):
             await create_conversation(req.session_id, make_title(req.message))
 
-        response_text = await get_agent_response(req.session_id, req.message)
+        response_text = await get_agent_response(req.session_id, req.message, agent_mode=req.mode)
         return ChatResponse(
             response=response_text,
             session_id=req.session_id
@@ -49,7 +73,7 @@ async def chat_endpoint(req: ChatRequest):
         if "thought_signature" in error_msg:
             logger.warning("Resiliently retrying after thought_signature artifact...")
             try:
-                response_text = await get_agent_response(req.session_id, req.message)
+                response_text = await get_agent_response(req.session_id, req.message, agent_mode=req.mode)
                 return ChatResponse(response=response_text, session_id=req.session_id)
             except Exception as retry_err:
                 logger.error(f"Retry also failed: {retry_err}")
@@ -196,17 +220,24 @@ async def chat_stream_endpoint(request: Request, req: ChatStreamRequest):
         input_messages = {"messages": [HumanMessage(content=message_content)]}
         await save_message(session_id, "user", user_message, attachment if image_content else None)
 
-        app = await get_app()
-        config = {"configurable": {"thread_id": session_id}, "recursion_limit": 8}
+        agent_mode = req.mode if req.mode in ("chat", "plan") else "plan"
+        app = await (get_app_interrupt_after_tools(agent_mode=agent_mode) if agent_mode == "plan" else get_app(agent_mode=agent_mode))
+        config = {
+            "configurable": {"thread_id": session_id},
+            "recursion_limit": DEFAULT_AGENT_RECURSION_LIMIT,
+        }
 
         full_response: str = ""
+        last_tool_result: str | None = None
         max_retries = 2
         # Buffer to accumulate streamed tool-call argument fragments
         _tc_args_buf: dict[str, dict] = {}
+        _force_inputs_next_attempt = False
 
         for attempt in range(max_retries):
             try:
-                stream_inputs = input_messages if attempt == 0 else None
+                stream_inputs = input_messages if (attempt == 0 or _force_inputs_next_attempt) else None
+                _force_inputs_next_attempt = False
                 async for chunk, metadata in app.astream(
                     stream_inputs,
                     config,
@@ -230,8 +261,11 @@ async def chat_stream_endpoint(request: Request, req: ChatStreamRequest):
                         for tc in tool_call_chunks:
                             tc_id = tc.get("id") or str(tc.get("index", 0))
                             if tc.get("name"):
-                                _tc_args_buf[tc_id] = {"name": tc["name"], "args": ""}
-                                yield _sse("tool_start", {"command": tc["name"]})
+                                # Some providers repeat the tool name across multiple chunks for the same call.
+                                # Emit tool_start only once per tool-call id to avoid duplicate UI tool cards.
+                                if tc_id not in _tc_args_buf:
+                                    _tc_args_buf[tc_id] = {"name": tc["name"], "args": ""}
+                                    yield _sse("tool_start", {"command": tc["name"]})
                             if tc.get("args") and tc_id in _tc_args_buf:
                                 _tc_args_buf[tc_id]["args"] += tc["args"]
                                 try:
@@ -245,12 +279,23 @@ async def chat_stream_endpoint(request: Request, req: ChatStreamRequest):
 
                     # 3) Tool results
                     if chunk_type in ("ToolMessageChunk", "ToolMessage") and getattr(chunk, "name", None):
+                        last_tool_result = str(content)
                         yield _sse("tool_output", {"result": str(content)})
 
                 break
 
             except Exception as stream_err:
                 error_msg = str(stream_err)
+                if (
+                    ("INVALID_CHAT_HISTORY" in error_msg)
+                    or ("tool_calls that do not have a corresponding ToolMessage" in error_msg)
+                ) and attempt < max_retries - 1:
+                    # This happens when a previous run was interrupted after the model emitted a tool call
+                    # but before the corresponding ToolMessage was checkpointed. Clear checkpoints for
+                    # this session and retry once.
+                    _clear_thread_checkpoints(session_id)
+                    _force_inputs_next_attempt = True
+                    continue
                 if "thought_signature" in error_msg and attempt < max_retries - 1:
                     logger.warning(
                         f"Resiliently retrying stream after thought_signature (attempt {attempt + 1})..."
@@ -270,7 +315,38 @@ async def chat_stream_endpoint(request: Request, req: ChatStreamRequest):
                     yield _sse("error", {"content": error_msg})
                 return
 
-        await save_message(session_id, "assistant", full_response.strip())
+        final_text = full_response.strip()
+        if agent_mode == "plan" and last_tool_result:
+            # We intentionally interrupted after the tools node to prevent repeated tool loops.
+            # Generate a brief final message with a tool-free model call.
+            try:
+                from app.graph.agent import get_llm
+
+                llm = await get_llm()
+                sys = SystemMessage(
+                    content=(
+                        "You are AutoMicro-Bot. Write a short, friendly confirmation message "
+                        "based on the user's request and the tool result. Do NOT call tools."
+                    )
+                )
+                hm = HumanMessage(
+                    content=(
+                        f"User request:\n{req.message}\n\n"
+                        f"Tool result:\n{last_tool_result}\n\n"
+                        "Respond in 1-2 sentences."
+                    )
+                )
+                async for chunk in llm.astream([sys, hm]):
+                    c = getattr(chunk, "content", None)
+                    if isinstance(c, str) and c:
+                        final_text += c
+                        yield _sse("token", {"content": c})
+            except Exception as e:
+                logger.warning("Final text generation failed: %s", e)
+
+        final_text = final_text.strip()
+        if final_text:
+            await save_message(session_id, "assistant", final_text)
         yield _sse("done", {})
 
     return StreamingResponse(

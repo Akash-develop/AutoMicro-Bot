@@ -3,18 +3,18 @@
  * All API calls to the FastAPI backend
  */
 
-const BACKEND_PORT_TAURI_PROD = '8765';
-import { isTauri } from '../utils/platform.js';
-const BASE_URL = isTauri() ? `http://127.0.0.1:${BACKEND_PORT_TAURI_PROD}` : 'http://localhost:8000';
+import { getBackendBaseUrl } from './backendUrl.js';
+
+const BASE_URL = getBackendBaseUrl();
 
 /**
  * Send a message to the backend.
  */
-export async function sendMessage(sessionId, message) {
+export async function sendMessage(sessionId, message, mode = 'plan') {
   const res = await fetch(`${BASE_URL}/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ session_id: sessionId, message }),
+    body: JSON.stringify({ session_id: sessionId, message, mode }),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
@@ -26,9 +26,10 @@ export async function sendMessage(sessionId, message) {
 /**
  * Stream a response token by token via WebSocket, supporting tool events.
  */
-export function streamMessage(sessionId, message, onToken, onToolStart, onToolOutput, onDone, onError, attachment = null, onToolCommand = null) {
+export function streamMessage(sessionId, message, onToken, onToolStart, onToolOutput, onDone, onError, attachment = null, onToolCommand = null, mode = 'plan') {
   const controller = new AbortController();
   let closed = false;
+  const debugReqId = `req_${crypto.randomUUID()}`;
 
   const close = () => {
     if (closed) return;
@@ -81,7 +82,7 @@ export function streamMessage(sessionId, message, onToken, onToolStart, onToolOu
       const res = await fetch(`${BASE_URL}/chat/stream`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ session_id: sessionId, message, attachment }),
+        body: JSON.stringify({ session_id: sessionId, message, attachment, mode }),
         signal: controller.signal,
       });
 

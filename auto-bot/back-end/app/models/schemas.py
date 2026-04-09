@@ -4,12 +4,16 @@ Pydantic v2 request/response models
 """
 from pydantic import BaseModel, Field
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 
 class ChatRequest(BaseModel):
     session_id: str = Field(..., min_length=1, description="Unique session identifier")
     message: str = Field(..., min_length=1, description="User message text")
+    mode: Literal["chat", "plan"] = Field(
+        default="plan",
+        description="chat = LLM only; plan = terminal + todo tools",
+    )
 
 
 class ChatResponse(BaseModel):
@@ -70,6 +74,10 @@ class ChatStreamRequest(BaseModel):
     session_id: str = Field(..., min_length=1, description="Unique session identifier")
     message: str = Field(..., min_length=1, description="User message text")
     attachment: Optional[Attachment] = None
+    mode: Literal["chat", "plan"] = Field(
+        default="plan",
+        description="chat = LLM only; plan = terminal + todo tools",
+    )
 
 
 class WSToken(BaseModel):

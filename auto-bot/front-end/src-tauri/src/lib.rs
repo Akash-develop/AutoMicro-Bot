@@ -32,7 +32,8 @@ pub fn run() {
           .shell()
           .sidecar("automicro-backend")?
           .env("HOST", BACKEND_HOST)
-          .env("PORT", BACKEND_PORT);
+          .env("PORT", BACKEND_PORT)
+          .env("UVICORN_RELOAD", "0");
 
         // Spawn and keep running in the background; backend logs go to stdout/stderr.
         let (_rx, child) = sidecar.spawn()?;
