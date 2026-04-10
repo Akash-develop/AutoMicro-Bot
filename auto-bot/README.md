@@ -1,5 +1,7 @@
 # AutoMicro-Bot — Floating AI Chatbot Desktop App
 
+> **Overview, feature list, and screenshot gallery:** see the [repository README](../README.md) at the repo root.
+
 A full-stack desktop chatbot application that floats on your screen, powered by Tauri, React, and a local Python backend with LangGraph and Ollama.
 
 ## 🚀 Features
