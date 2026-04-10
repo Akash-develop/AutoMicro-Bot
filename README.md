@@ -75,6 +75,10 @@ In order—scroll the README to browse.
 
 <img src="docs/readme-screenshots/08-model-settings-history.png" alt="Model Settings history" width="720" />
 
+#### 9. Normal mode — full window (History sidebar + chat)
+
+<img src="docs/readme-screenshots/09-normal-mode-ui.png" alt="AutoMicro-Bot normal mode: History sidebar with conversations and main chat area" width="720" />
+
 ---
 
 ## Setup (developers)
