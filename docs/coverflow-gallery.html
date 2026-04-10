@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AutoMicro-Bot — Screenshot Coverflow</title>
+    <style>
+      :root {
+        --bg: #2a2a2e;
+        --fg: #e8e8ed;
+        --muted: #98989d;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+        background: radial-gradient(ellipse 120% 80% at 50% 0%, #3a3a42 0%, var(--bg) 55%);
+        color: var(--fg);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 1.5rem 0 3rem;
+      }
+
+      header {
+        text-align: center;
+        max-width: 40rem;
+        padding: 0 1rem 1.25rem;
+      }
+
+      header h1 {
+        font-size: 1.35rem;
+        font-weight: 600;
+        margin: 0 0 0.35rem;
+      }
+
+      header p {
+        margin: 0;
+        font-size: 0.9rem;
+        color: var(--muted);
+        line-height: 1.45;
+      }
+
+      .scene {
+        width: 100%;
+        max-width: min(1200px, 100vw);
+        perspective: 1400px;
+        perspective-origin: 50% 42%;
+      }
+
+      .viewport {
+        overflow-x: auto;
+        overflow-y: hidden;
+        scroll-snap-type: x mandatory;
+        scroll-behavior: smooth;
+        -webkit-overflow-scrolling: touch;
+        padding: 2.5rem 0 5rem;
+        mask-image: linear-gradient(
+          to right,
+          transparent,
+          #000 8%,
+          #000 92%,
+          transparent
+        );
+      }
+
+      .viewport::-webkit-scrollbar {
+        height: 10px;
+      }
+
+      .viewport::-webkit-scrollbar-track {
+        background: rgba(0, 0, 0, 0.2);
+        border-radius: 5px;
+      }
+
+      .viewport::-webkit-scrollbar-thumb {
+        background: rgba(255, 255, 255, 0.2);
+        border-radius: 5px;
+      }
+
+      .track {
+        display: flex;
+        align-items: center;
+        gap: 0;
+        width: max-content;
+        padding: 0 calc(50vw - min(200px, 28vw));
+        min-height: min(72vh, 520px);
+      }
+
+      .slide {
+        flex: 0 0 auto;
+        width: min(400px, 78vw);
+        scroll-snap-align: center;
+        padding: 0 clamp(10px, 3vw, 22px);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        transform-style: preserve-3d;
+      }
+
+      .card {
+        position: relative;
+        width: 100%;
+        border-radius: 10px;
+        transform-style: preserve-3d;
+        transition: transform 0.12s ease-out;
+        will-change: transform;
+        box-shadow:
+          0 24px 48px rgba(0, 0, 0, 0.55),
+          0 0 0 1px rgba(255, 255, 255, 0.06);
+      }
+
+      .card img {
+        display: block;
+        width: 100%;
+        height: auto;
+        vertical-align: middle;
+        border-radius: 10px;
+        -webkit-box-reflect: below 14px
+          linear-gradient(to bottom, transparent 0%, rgba(0, 0, 0, 0.15) 35%, rgba(0, 0, 0, 0.45) 100%);
+      }
+
+      .caption {
+        position: absolute;
+        left: 50%;
+        bottom: -2.25rem;
+        transform: translateX(-50%);
+        white-space: nowrap;
+        font-size: 0.78rem;
+        color: var(--muted);
+        opacity: 0;
+        transition: opacity 0.2s ease;
+        pointer-events: none;
+        max-width: 90vw;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .slide.is-center .caption {
+        opacity: 1;
+      }
+
+      .hint {
+        margin-top: 0.5rem;
+        font-size: 0.8rem;
+        color: var(--muted);
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .viewport {
+          scroll-behavior: auto;
+        }
+
+        .card {
+          transition: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>AutoMicro-Bot — Coverflow</h1>
+      <p>
+        Scroll horizontally (trackpad, wheel + shift, or scrollbar). Side panels tilt in 3D like a classic cover flow;
+        the centered shot is flat and largest.
+      </p>
+    </header>
+
+    <div class="scene">
+      <div class="viewport" id="viewport" tabindex="0" aria-label="Screenshot carousel">
+        <div class="track" id="track">
+          <div class="slide" data-title="Startup splash">
+            <div class="card">
+              <img src="readme-screenshots/01-splash.png" alt="Startup splash" loading="lazy" />
+              <span class="caption">Startup splash</span>
+            </div>
+          </div>
+          <div class="slide" data-title="Chat — browser automation">
+            <div class="card">
+              <img src="readme-screenshots/02-chat-browser-automation.png" alt="Chat — browser automation" loading="lazy" />
+              <span class="caption">Chat — browser automation</span>
+            </div>
+          </div>
+          <div class="slide" data-title="Demo — JavaScript search">
+            <div class="card">
+              <img src="readme-screenshots/03-demo-javascript-search.png" alt="Demo — Google search for JavaScript" loading="lazy" />
+              <span class="caption">Demo — JavaScript search</span>
+            </div>
+          </div>
+          <div class="slide" data-title="Demo — React.js automation">
+            <div class="card">
+              <img src="readme-screenshots/04-demo-reactjs-automation.png" alt="Demo — chained React.js search" loading="lazy" />
+              <span class="caption">Demo — React.js automation</span>
+            </div>
+          </div>
+          <div class="slide" data-title="Settings">
+            <div class="card">
+              <img src="readme-screenshots/05-settings.png" alt="Settings" loading="lazy" />
+              <span class="caption">Settings</span>
+            </div>
+          </div>
+          <div class="slide" data-title="About">
+            <div class="card">
+              <img src="readme-screenshots/06-about.png" alt="About" loading="lazy" />
+              <span class="caption">About</span>
+            </div>
+          </div>
+          <div class="slide" data-title="Model Settings — configuration">
+            <div class="card">
+              <img src="readme-screenshots/07-model-settings-config.png" alt="Model Settings — configuration" loading="lazy" />
+              <span class="caption">Model Settings — configuration</span>
+            </div>
+          </div>
+          <div class="slide" data-title="Model Settings — history">
+            <div class="card">
+              <img src="readme-screenshots/08-model-settings-history.png" alt="Model Settings — history" loading="lazy" />
+              <span class="caption">Model Settings — history</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <p class="hint">Tip: click the strip once, then use ← → keys to snap between screenshots.</p>
+
+    <script>
+      (function () {
+        var viewport = document.getElementById("viewport");
+        var slides = Array.prototype.slice.call(document.querySelectorAll(".slide"));
+        var maxAngle = 52;
+        var maxScaleDrop = 0.18;
+
+        function update() {
+          var v = viewport.getBoundingClientRect();
+          var mid = v.left + v.width / 2;
+
+          slides.forEach(function (slide) {
+            var card = slide.querySelector(".card");
+            var r = slide.getBoundingClientRect();
+            var cx = r.left + r.width / 2;
+            var norm = (cx - mid) / (v.width * 0.42);
+            norm = Math.max(-1, Math.min(1, norm));
+            var angle = -norm * maxAngle;
+            var scale = 1 - Math.abs(norm) * maxScaleDrop;
+            var z = Math.round(500 - Math.abs(cx - mid) / 2);
+            card.style.transform =
+              "translateZ(0) rotateY(" + angle + "deg) scale(" + scale.toFixed(3) + ")";
+            card.style.zIndex = String(z);
+
+            if (Math.abs(cx - mid) < r.width * 0.35) {
+              slide.classList.add("is-center");
+            } else {
+              slide.classList.remove("is-center");
+            }
+          });
+        }
+
+        var ticking = false;
+        function onScroll() {
+          if (!ticking) {
+            ticking = true;
+            requestAnimationFrame(function () {
+              update();
+              ticking = false;
+            });
+          }
+        }
+
+        viewport.addEventListener("scroll", onScroll, { passive: true });
+        window.addEventListener("resize", update);
+        window.addEventListener("load", update);
+        update();
+
+        viewport.addEventListener("keydown", function (e) {
+          var w = viewport.clientWidth * 0.85;
+          if (e.key === "ArrowRight") {
+            viewport.scrollBy({ left: w, behavior: "smooth" });
+            e.preventDefault();
+          } else if (e.key === "ArrowLeft") {
+            viewport.scrollBy({ left: -w, behavior: "smooth" });
+            e.preventDefault();
+          }
+        });
+      })();
+    </script>
+  </body>
+</html>

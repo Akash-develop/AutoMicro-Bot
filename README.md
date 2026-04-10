@@ -4,8 +4,6 @@
 
 The app pairs a **Tauri + React** front end with a **Python** backend (**FastAPI**, **LangGraph**, **SQLite**). Model calls can go through **Ollama** or other providers you configure in-app.
 
-> **Note:** GitHub’s README viewer does not run JavaScript, so there is no true “carousel” with arrows. Below you get a **horizontal strip** you can scroll sideways, plus the same shots **full width in order** as you scroll the page.
-
 ---
 
 ## What it does
@@ -31,22 +29,19 @@ The app pairs a **Tauri + React** front end with a **Python** backend (**FastAPI
 
 ## Screenshots
 
-### Horizontal strip (scroll sideways)
+### Coverflow-style gallery (3D scroll)
 
-<div style="overflow-x:auto; width:100%; padding:12px 0;">
-  <div style="display:flex; gap:14px; width:max-content; padding:4px 2px;">
-    <img src="docs/readme-screenshots/01-splash.png" alt="Splash screen while AutoMicro-Bot initializes" style="height:220px; width:auto; border-radius:8px;" />
-    <img src="docs/readme-screenshots/02-chat-browser-automation.png" alt="Chat: open Chrome and search ChatGPT" style="height:220px; width:auto; border-radius:8px;" />
-    <img src="docs/readme-screenshots/03-demo-javascript-search.png" alt="Browser automation result: Google search for javascript" style="height:220px; width:auto; border-radius:8px;" />
-    <img src="docs/readme-screenshots/04-demo-reactjs-automation.png" alt="Multi-step automation: javascript then reactjs search" style="height:220px; width:auto; border-radius:8px;" />
-    <img src="docs/readme-screenshots/05-settings.png" alt="Settings: permissions, model, appearance" style="height:220px; width:auto; border-radius:8px;" />
-    <img src="docs/readme-screenshots/06-about.png" alt="About window with version and links" style="height:220px; width:auto; border-radius:8px;" />
-    <img src="docs/readme-screenshots/07-model-settings-config.png" alt="Model Settings configuration tab" style="height:220px; width:auto; border-radius:8px;" />
-    <img src="docs/readme-screenshots/08-model-settings-history.png" alt="Model Settings history tab" style="height:220px; width:auto; border-radius:8px;" />
-  </div>
-</div>
+GitHub’s README renderer **does not allow** the CSS and JavaScript needed for a real coverflow (3D `transform`, `perspective`, scroll-linked tilt, reflections). Those features only run in a normal browser page.
 
-### One by one (scroll down)
+**Interactive coverflow (like your reference):** open **[`docs/coverflow-gallery.html`](docs/coverflow-gallery.html)** locally after cloning (`open docs/coverflow-gallery.html` on macOS), or publish the **`/docs`** folder with [GitHub Pages](https://docs.github.com/en/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site) and visit:
+
+`https://<your-username>.github.io/<your-repo>/coverflow-gallery.html`
+
+That page uses **scroll-snap**, **perspective** on the scene, **rotateY / scale** driven by horizontal scroll, and **`-webkit-box-reflect`** for the glossy reflection under each shot.
+
+### Static gallery (in this README)
+
+In order—scroll the README to browse.
 
 #### 1. Startup splash
 
@@ -102,7 +97,9 @@ npm run tauri:dev
 
 ```text
 AutoMicro-bot/
-├── docs/readme-screenshots/   # Images used by this README
+├── docs/
+│   ├── coverflow-gallery.html # Browser-only 3D coverflow over readme-screenshots
+│   └── readme-screenshots/    # Images used by this README + gallery
 ├── auto-bot/
 │   ├── front-end/             # Tauri + React
 │   └── back-end/              # FastAPI + LangGraph
