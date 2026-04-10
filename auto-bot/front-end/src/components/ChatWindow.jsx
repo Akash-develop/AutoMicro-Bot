@@ -117,14 +117,31 @@ function WelcomeNormal({ onSuggestionClick }) {
 
 
 export default function ChatWindow({ messages, isTyping, newMsgId, isNormalMode, onSuggestionClick }) {
-    const bottomRef = useRef(null);
+    const scrollRef = useRef(null);
+    const lastMessageCount = useRef(messages.length);
 
     useEffect(() => {
-        bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+        const container = scrollRef.current;
+        if (!container) return;
+
+        const isNewUserMessage = messages.length > 0 && messages[messages.length - 1].role === 'user' && messages.length !== lastMessageCount.current;
+        
+        // Check if user is near bottom (within 100px)
+        const { scrollTop, scrollHeight, clientHeight } = container;
+        const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
+
+        if (isNearBottom || isNewUserMessage) {
+            container.scrollTo({
+                top: container.scrollHeight,
+                behavior: 'smooth'
+            });
+        }
+        
+        lastMessageCount.current = messages.length;
     }, [messages, isTyping]);
 
     return (
-        <div className="chat-history">
+        <div className="chat-history" ref={scrollRef}>
             {messages.length === 0 ? (
                 isNormalMode ? <WelcomeNormal onSuggestionClick={onSuggestionClick} /> : <WelcomeMini />
             ) : (
@@ -147,7 +164,6 @@ export default function ChatWindow({ messages, isTyping, newMsgId, isNormalMode,
             )}
 
             {isTyping && <TypingIndicator />}
-            <div ref={bottomRef} />
         </div>
     );
 }

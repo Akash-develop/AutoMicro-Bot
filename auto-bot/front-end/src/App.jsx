@@ -41,6 +41,7 @@ export default function App() {
   const activeStream = useRef(null);
   const sendLockRef = useRef(false);
   const historyRequestId = useRef(0);
+  const previousViewModeRef = useRef('mini');
 
   const tauriWindowApi = useRef(null);
 
@@ -308,6 +309,14 @@ export default function App() {
       sessionId,
       text,
       (token) => {
+        // Auto-restore if we are in bubble mode
+        setViewMode(current => {
+          if (current === 'bubble') {
+            handleRestoreFromBubble(previousViewModeRef.current);
+          }
+          return current;
+        });
+
         setMessages((prev) => prev.map(m => {
           if (m.id === msgId) {
             // If it's a new substring, append it. If it's a complete overwrite from the backend, we might need a different strategy.
@@ -319,6 +328,15 @@ export default function App() {
         setIsTyping(false);
       },
       (command) => {
+        // Auto-minimize on command
+        setViewMode(current => {
+          if (current !== 'bubble') {
+            previousViewModeRef.current = current;
+            handleMinimizeToBubble();
+          }
+          return current;
+        });
+
         setMessages((prev) => prev.map(m => {
           if (m.id === msgId) {
             return { ...m, commands: [...(m.commands || []), createToolCall(command)] };
@@ -373,6 +391,13 @@ export default function App() {
             )
           };
         }));
+        // Ensure restored if still in bubble
+        setViewMode(current => {
+          if (current === 'bubble') {
+            handleRestoreFromBubble(previousViewModeRef.current);
+          }
+          return current;
+        });
         setIsTyping(false);
         sendLockRef.current = false;
       },
@@ -397,6 +422,13 @@ export default function App() {
           };
           return { ...m, commands: newCommands };
         }));
+        // Ensure restored if still in bubble
+        setViewMode(current => {
+          if (current === 'bubble') {
+            handleRestoreFromBubble(previousViewModeRef.current);
+          }
+          return current;
+        });
         setIsTyping(false);
         sendLockRef.current = false;
       },
