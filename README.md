@@ -51,31 +51,39 @@ In order—scroll the README to browse.
 
 <img src="docs/readme-screenshots/02-chat-browser-automation.png" alt="Chat: open Chrome and search ChatGPT" width="720" />
 
-#### 3. Demo — Google search for “javascript”
+#### 3. Chat vs Plan mode
 
-<img src="docs/readme-screenshots/03-demo-javascript-search.png" alt="Browser showing Google results for javascript" width="720" />
+<img src="docs/readme-screenshots/03-chat-plan-mode.png" alt="Chat mode explains switching to Plan mode for Mac automation" width="720" />
 
-#### 4. Demo — chained search (“javascript” then “reactjs”)
+#### 4. Demo — agent running (JavaScript search)
 
-<img src="docs/readme-screenshots/04-demo-reactjs-automation.png" alt="Chat overlay on Google results for reactjs" width="720" />
+<img src="docs/readme-screenshots/04-demo-javascript-agent-running.png" alt="Chrome on Google search for javascript with Running agent overlay" width="720" />
 
-#### 5. Settings
+#### 5. Demo — Google results for JavaScript
+
+<img src="docs/readme-screenshots/10-demo-javascript-google-results.png" alt="Google search results for javascript with agent Running overlay" width="720" />
+
+#### 6. Demo — chained Google searches (JavaScript → React)
+
+<img src="docs/readme-screenshots/11-demo-chained-google-searches.png" alt="Auto micro-Bot chat with shell command opening Chrome and searching javascript then reactjs" width="720" />
+
+#### 7. Settings
 
 <img src="docs/readme-screenshots/05-settings.png" alt="AutoMicro-Bot settings window" width="720" />
 
-#### 6. About
+#### 8. About
 
 <img src="docs/readme-screenshots/06-about.png" alt="About AutoMicro-Bot" width="720" />
 
-#### 7. Model Settings — configuration
+#### 9. Model Settings — configuration
 
 <img src="docs/readme-screenshots/07-model-settings-config.png" alt="Model Settings configuration" width="720" />
 
-#### 8. Model Settings — history
+#### 10. Model Settings — history
 
 <img src="docs/readme-screenshots/08-model-settings-history.png" alt="Model Settings history" width="720" />
 
-#### 9. Normal mode — full window (History sidebar + chat)
+#### 11. Normal mode — full window (History sidebar + chat)
 
 <img src="docs/readme-screenshots/09-normal-mode-ui.png" alt="AutoMicro-Bot normal mode: History sidebar with conversations and main chat area" width="720" />
 
